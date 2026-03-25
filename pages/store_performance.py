@@ -1,10 +1,11 @@
+"""Store Performance — Page 2"""
 import dash
 from dash import html, dcc, callback, Input, Output
-import plotly.express as px
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.db import *
 from components.shared import *
 
@@ -67,7 +68,20 @@ def layout():
 )
 def update_performance(days):
     df = get_store_revenue_summary(days)
-    df = df.sort_values("total_revenue", ascending=False)
+    
+    # Handle empty data
+    if df.empty:
+        empty_fig = go.Figure()
+        empty_fig.update_layout(**CHART_LAYOUT, title={"text": "No data available", "font": {"color": "#ccc"}})
+        return empty_fig, empty_fig, empty_fig, html.Div("No performance data available")
+    
+    # Ensure numeric columns
+    df["total_revenue"] = pd.to_numeric(df["total_revenue"], errors='coerce').fillna(0)
+    df["total_profit"] = pd.to_numeric(df["total_profit"], errors='coerce').fillna(0)
+    df["margin_pct"] = pd.to_numeric(df["margin_pct"], errors='coerce').fillna(0)
+    df["total_units"] = pd.to_numeric(df["total_units"], errors='coerce').fillna(0)
+    
+    df = df.sort_values("total_revenue", ascending=False).reset_index(drop=True)
 
     # Revenue bar
     fig_bar = go.Figure(go.Bar(
@@ -77,9 +91,10 @@ def update_performance(days):
         textposition="outside", textfont={"color": "#aaa", "size": 11}
     ))
     fig_bar.update_layout(**CHART_LAYOUT, title={"text": f"Revenue by Store — Last {days} Days", "font": {"color": "#ccc", "size": 13}})
+    fig_bar.update_yaxis(tickprefix="$")
 
     # Margin chart
-    df_sorted_margin = df.sort_values("margin_pct", ascending=True)
+    df_sorted_margin = df.sort_values("margin_pct", ascending=True).reset_index(drop=True)
     fig_margin = go.Figure(go.Bar(
         x=df_sorted_margin["margin_pct"], y=df_sorted_margin["store_name"],
         orientation="h",
@@ -89,6 +104,7 @@ def update_performance(days):
         textposition="outside"
     ))
     fig_margin.update_layout(**CHART_LAYOUT, title={"text": "Profit Margin % by Store", "font": {"color": "#ccc", "size": 13}})
+    fig_margin.update_xaxis(tickprefix="", ticksuffix="%")
 
     # Scatter — revenue vs profit
     fig_scatter = px.scatter(
@@ -99,8 +115,10 @@ def update_performance(days):
         size_max=40
     )
     fig_scatter.update_traces(textposition="top center", textfont={"size": 10, "color": "#aaa"})
-    fig_scatter.update_layout(**CHART_LAYOUT, coloraxis_showscale=False,
+    fig_scatter.update_layout(**CHART_LAYOUT, 
                                title={"text": "Revenue vs Profit (bubble = units)", "font": {"color": "#ccc", "size": 13}})
+    fig_scatter.update_xaxis(tickprefix="$")
+    fig_scatter.update_yaxis(tickprefix="$")
 
     # Table
     headers = ["Store", "City", "Revenue", "Profit", "Units", "Margin", "Rank"]
@@ -117,7 +135,7 @@ def update_performance(days):
             html.Td(row["city"], style={"color": "#888", "padding": "8px 12px", "fontSize": "12px"}),
             html.Td(f"${row['total_revenue']:,.0f}", style={"color": "#fff", "padding": "8px 12px", "fontWeight": "600"}),
             html.Td(f"${row['total_profit']:,.0f}", style={"color": "#22c55e", "padding": "8px 12px"}),
-            html.Td(f"{row['total_units']:,}", style={"color": "#888", "padding": "8px 12px"}),
+            html.Td(f"{int(row['total_units']):,}", style={"color": "#888", "padding": "8px 12px"}),
             html.Td(f"{m:.1f}%", style={"color": margin_color, "padding": "8px 12px", "fontWeight": "600"}),
             html.Td(medal, style={"padding": "8px 12px", "fontSize": "14px"}),
         ], style={"borderBottom": "1px solid #1a1a1a"}))
