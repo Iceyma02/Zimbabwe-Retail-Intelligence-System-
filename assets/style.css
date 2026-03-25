@@ -1,0 +1,53 @@
+/* PnP Zimbabwe — Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #0d0d0d;
+    color: #ccc;
+    font-family: 'DM Sans', sans-serif;
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a2a #111;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+/* Sidebar link hover */
+.sidebar-link:hover {
+    color: #fff !important;
+    background: rgba(227, 24, 55, 0.15) !important;
+}
+
+/* Dropdown overrides */
+.Select-control { background: #1e1e1e !important; border-color: #333 !important; color: #fff !important; }
+.Select-menu-outer { background: #1e1e1e !important; border-color: #333 !important; }
+.Select-option { background: #1e1e1e !important; color: #ccc !important; }
+.Select-option:hover, .Select-option.is-focused { background: #2a2a2a !important; color: #fff !important; }
+.Select-value-label { color: #fff !important; }
+.Select-placeholder { color: #666 !important; }
+
+.VirtualizedSelectOption { background: #1e1e1e !important; }
+.VirtualizedSelectFocusedOption { background: #2a2a2a !important; }
+
+/* Dash dropdown dark */
+.dash-dropdown .Select-control { background: #1e1e1e !important; }
+
+/* Button hover */
+button:hover { opacity: 0.88; transform: translateY(-1px); transition: all 0.15s; }
+
+/* Table row hover */
+tr:hover td { background: rgba(255,255,255,0.02) !important; }
+
+/* Card entrance animation */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.dash-graph { animation: fadeUp 0.3s ease forwards; }
+
+/* Loading spinner override */
+._dash-loading { color: #00c853 !important; }
