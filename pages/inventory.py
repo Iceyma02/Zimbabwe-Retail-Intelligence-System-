@@ -1,10 +1,11 @@
+"""Inventory Monitor — Page 4"""
 import dash
 from dash import html, dcc, callback, Input, Output
-import plotly.express as px
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.db import *
 from components.shared import *
 
@@ -80,6 +81,19 @@ def layout():
 )
 def update_inventory(store_id, category, status_filter):
     df = get_inventory_simple()
+    
+    if df.empty:
+        empty_fig = go.Figure()
+        empty_fig.update_layout(**CHART_LAYOUT)
+        return [], empty_fig, empty_fig, empty_fig, html.Div("No inventory data available")
+    
+    # Calculate days until expiry if not present
+    if "expiry_date" in df.columns and "days_until_expiry" not in df.columns:
+        df["expiry_date"] = pd.to_datetime(df["expiry_date"], errors='coerce')
+        df["days_until_expiry"] = (df["expiry_date"] - pd.Timestamp.now()).dt.days
+        df["days_until_expiry"] = df["days_until_expiry"].fillna(999).clip(lower=0)
+    
+    # Apply filters
     if store_id != "ALL":
         df = df[df["store_id"] == store_id]
     if category != "All":
@@ -90,8 +104,14 @@ def update_inventory(store_id, category, status_filter):
     total_skus = len(df)
     critical = len(df[df["status"] == "CRITICAL"])
     low = len(df[df["status"] == "LOW"])
-    expiring_3d = len(df[df["days_until_expiry"] <= 3])
-    inv_value = (df["current_stock"] * df["unit_cost"]).sum()
+    
+    # Handle expiry days - default to 999 if not available
+    if "days_until_expiry" in df.columns:
+        expiring_3d = len(df[df["days_until_expiry"] <= 3])
+    else:
+        expiring_3d = 0
+    
+    inv_value = (df["current_stock"] * df["unit_cost"]).sum() if "unit_cost" in df.columns else 0
 
     kpis = [
         kpi_card("Total SKUs", f"{total_skus:,}", None, None, "fa-cubes", "#3b82f6"),
@@ -119,20 +139,24 @@ def update_inventory(store_id, category, status_filter):
     fig_cat.update_xaxes(tickangle=-30)
 
     # Expiry urgency
-    expiry_bins = pd.cut(df["days_until_expiry"],
-                         bins=[0, 3, 7, 14, 30, 999],
-                         labels=["<3 days", "3-7 days", "7-14 days", "14-30 days", "30+ days"])
-    expiry_counts = expiry_bins.value_counts().sort_index().reset_index()
-    expiry_counts.columns = ["range", "count"]
-    expiry_colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"]
-    fig_expiry = go.Figure(go.Bar(
-        x=expiry_counts["range"].astype(str), y=expiry_counts["count"],
-        marker_color=expiry_colors
-    ))
+    if "days_until_expiry" in df.columns:
+        expiry_bins = pd.cut(df["days_until_expiry"],
+                             bins=[0, 3, 7, 14, 30, 999],
+                             labels=["<3 days", "3-7 days", "7-14 days", "14-30 days", "30+ days"])
+        expiry_counts = expiry_bins.value_counts().sort_index().reset_index()
+        expiry_counts.columns = ["range", "count"]
+        expiry_colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"]
+        fig_expiry = go.Figure(go.Bar(
+            x=expiry_counts["range"].astype(str), y=expiry_counts["count"],
+            marker_color=expiry_colors
+        ))
+    else:
+        fig_expiry = go.Figure()
+        fig_expiry.add_annotation(text="No expiry data available", x=0.5, y=0.5, showarrow=False)
     fig_expiry.update_layout(**CHART_LAYOUT, title={"text": "Expiry Urgency Breakdown", "font": {"color": "#ccc", "size": 13}})
 
     # Table
-    display_df = df.sort_values("days_until_expiry").head(100)
+    display_df = df.sort_values("current_stock").head(100)
     headers = ["Product", "Category", "Store", "Stock", "Reorder Point", "Status", "Expiry"]
     header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 10px",
                                              "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
@@ -141,6 +165,9 @@ def update_inventory(store_id, category, status_filter):
     for _, row in display_df.iterrows():
         stock_pct = row["current_stock"] / max(row["reorder_point"], 1) * 100
         stock_color = "#ef4444" if row["status"] == "CRITICAL" else "#f97316" if row["status"] == "LOW" else "#22c55e"
+        expiry_display = f"{int(row['days_until_expiry'])}d" if "days_until_expiry" in row and pd.notna(row['days_until_expiry']) else "N/A"
+        expiry_color = "#ef4444" if "days_until_expiry" in row and row['days_until_expiry'] <= 3 else "#aaa"
+        
         rows.append(html.Tr([
             html.Td(row["product_name"][:30], style={"color": "#ddd", "padding": "6px 10px", "fontSize": "12px"}),
             html.Td(row["category"], style={"color": "#888", "padding": "6px 10px", "fontSize": "11px"}),
@@ -148,9 +175,8 @@ def update_inventory(store_id, category, status_filter):
             html.Td(str(row["current_stock"]), style={"color": stock_color, "padding": "6px 10px", "fontWeight": "600"}),
             html.Td(str(row["reorder_point"]), style={"color": "#666", "padding": "6px 10px"}),
             html.Td(status_badge(row["status"]), style={"padding": "6px 10px"}),
-            html.Td(f"{int(row['days_until_expiry'])}d",
-                    style={"color": "#ef4444" if row["days_until_expiry"] <= 3 else "#aaa",
-                           "padding": "6px 10px", "fontSize": "12px"}),
+            html.Td(expiry_display,
+                    style={"color": expiry_color, "padding": "6px 10px", "fontSize": "12px"}),
         ], style={"borderBottom": "1px solid #1a1a1a"}))
 
     table = html.Table([html.Thead(header_row), html.Tbody(rows)],
