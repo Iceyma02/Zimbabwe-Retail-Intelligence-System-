@@ -1,11 +1,10 @@
-"""
-Central database access layer — all pages import from here
-"""
 import sqlite3
 import pandas as pd
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "zimretail_iq.db")
+# Works both locally and on Railway regardless of working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "zimretail_iq.db")
 
 
 def get_conn():
