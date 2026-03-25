@@ -5,10 +5,13 @@ Generic multi-retailer analytics system
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
+import os
+dash.register_page.__module__
 
 app = dash.Dash(
     __name__,
     use_pages=True,
+    pages_folder=os.path.join(os.path.dirname(__file__), "pages"),
     external_stylesheets=[
         dbc.themes.DARKLY,
         "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap",
