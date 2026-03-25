@@ -5,6 +5,7 @@ Generic multi-retailer analytics system
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
+import os
 
 app = dash.Dash(
     __name__,
@@ -168,8 +169,10 @@ def update_retailer_banner(retailer_val):
 
 if __name__ == "__main__":
     import os
-    if not os.path.exists("data/zimretail_iq.db"):
-    print("⚠️  Database not found. Running data generator first...")
-    from data.generate_data import save_to_sqlite
-    save_to_sqlite()
+    # Check if database exists, generate if not
+    db_path = "data/zimretail_iq.db"
+    if not os.path.exists(db_path):
+        print("⚠️  Database not found. Running data generator first...")
+        from data.generate_data import save_to_sqlite
+        save_to_sqlite()
     app.run(debug=True, port=8050)
