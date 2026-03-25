@@ -25,7 +25,7 @@ def layout():
     low_count = len(inv[inv["status"] == "LOW"])
 
     return html.Div([
-        page_header("National Overview", ""Real-time performance across all 12 Zimbabwe stores"", "fa-gauge-high"),
+        page_header("National Overview", "Real-time performance across all 12 Zimbabwe stores", "fa-gauge-high"),
         html.Div([
             # KPI Row
             html.Div([
