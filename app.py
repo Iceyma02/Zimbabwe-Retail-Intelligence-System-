@@ -5,20 +5,17 @@ Generic multi-retailer analytics system
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
-import os
-dash.register_page.__module__
 
 app = dash.Dash(
     __name__,
     use_pages=True,
-    pages_folder=os.path.join(os.path.dirname(__file__), "pages"),
     external_stylesheets=[
         dbc.themes.DARKLY,
         "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap",
         "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     ],
     suppress_callback_exceptions=True,
-    title="Zimbabwe Retail Intelligence System"
+    title="ZimRetail IQ — Retail Intelligence Platform"
 )
 
 server = app.server
@@ -67,7 +64,7 @@ sidebar = html.Div([
                                                    "fontSize": "17px", "fontFamily": "'Syne', sans-serif"}),
                     html.Span(" IQ", style={"color": "#fff", "fontWeight": "300", "fontSize": "17px"}),
                 ]),
-                html.Div("Zimbabwe Retail Intelligence System", style={
+                html.Div("Zimbabwe Retail Intelligence", style={
                     "color": "#555", "fontSize": "9px", "letterSpacing": "1.2px",
                     "textTransform": "uppercase", "marginTop": "-1px"
                 })
