@@ -168,8 +168,8 @@ def update_retailer_banner(retailer_val):
 
 if __name__ == "__main__":
     import os
-    if not os.path.exists("data/pnp_zimbabwe.db"):
-        print("⚠️  Database not found. Running data generator first...")
-        from data.generate_data import save_to_sqlite
-        save_to_sqlite()
+    if not os.path.exists("data/zimretail_iq.db"):
+    print("⚠️  Database not found. Running data generator first...")
+    from data.generate_data import save_to_sqlite
+    save_to_sqlite()
     app.run(debug=True, port=8050)
