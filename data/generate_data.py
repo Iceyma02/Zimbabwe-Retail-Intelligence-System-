@@ -313,7 +313,10 @@ def generate_economic_data():
     return pd.DataFrame(records)
 
 
-def save_to_sqlite(db_path="data/zimretail_iq.db"):
+def save_to_sqlite(db_path=None):
+    if db_path is None:
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(BASE_DIR, "zimretail_iq.db"):
     print("📊 ZimRetail IQ — Generating data...")
     os.makedirs("data", exist_ok=True)
 
