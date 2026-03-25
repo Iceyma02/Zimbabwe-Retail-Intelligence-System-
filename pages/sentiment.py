@@ -1,6 +1,6 @@
 """Customer Sentiment — Page 13"""
 import dash
-from dash import html, dcc
+from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -13,31 +13,57 @@ from components.shared import *
 dash.register_page(__name__, path="/sentiment", name="Customer Sentiment", order=12)
 
 def get_sentiment_data():
+    """Generate synthetic sentiment data from stores"""
     stores = get_stores()
+    if stores.empty:
+        return pd.DataFrame()
+    
     np.random.seed(77)
     complaint_categories = ["Empty Shelves", "Long Queues", "Poor Service", "Pricing",
                              "Product Quality", "Cleanliness", "Parking", "Opening Hours"]
     records = []
-    months = ["2024-09", "2024-10", "2024-11", "2024-12", "2025-01", "2025-02"]
+    months = pd.date_range(end=pd.Timestamp.now(), periods=6, freq='ME').strftime("%Y-%m").tolist()
+    
     for _, s in stores.iterrows():
+        # Base NPS varies by store
         base_nps = np.random.randint(28, 72)
         for month in months:
             nps_variation = base_nps + np.random.randint(-8, 8)
             for cat in complaint_categories:
                 records.append({
-                    "store_id": s["store_id"], "store_name": s["name"], "city": s["city"],
-                    "month": month, "nps_score": max(0, min(100, nps_variation)),
-                    "complaint_category": cat, "complaint_count": np.random.randint(2, 45)
+                    "store_id": s["store_id"], 
+                    "store_name": s["name"], 
+                    "city": s["city"],
+                    "month": month, 
+                    "nps_score": max(0, min(100, nps_variation)),
+                    "complaint_category": cat, 
+                    "complaint_count": np.random.randint(2, 45)
                 })
     return pd.DataFrame(records)
 
 def layout():
-    df = get_sentiment_data()
+    return html.Div([
+        page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
+        html.Div(id="sentiment-content", style={"padding": "20px 28px"})
+    ])
 
+@callback(
+    Output("sentiment-content", "children"),
+    Input("sentiment", "value")  # Dummy input
+)
+def update_sentiment(_):
+    df = get_sentiment_data()
+    
+    if df.empty:
+        return html.Div([
+            html.Div("No sentiment data available", style={"textAlign": "center", "padding": "60px", "color": "#888"})
+        ])
+    
+    # Calculate KPIs
     store_avg_nps = df.groupby("store_name")["nps_score"].mean()
     national_nps = store_avg_nps.mean()
-    best_store = store_avg_nps.idxmax()
-    worst_store = store_avg_nps.idxmin()
+    best_store = store_avg_nps.idxmax() if not store_avg_nps.empty else "N/A"
+    worst_store = store_avg_nps.idxmin() if not store_avg_nps.empty else "N/A"
     total_complaints = df["complaint_count"].sum()
     nps_color = "#22c55e" if national_nps > 60 else "#eab308" if national_nps > 40 else "#ef4444"
 
@@ -59,7 +85,7 @@ def layout():
     fig_nps.add_vline(x=60, line_dash="dash", line_color="#22c55e40")
     fig_nps.add_vline(x=40, line_dash="dash", line_color="#eab30840")
     fig_nps.update_layout(**CHART_LAYOUT, title={"text": "NPS Score by Store", "font": {"color": "#ccc", "size": 13}},
-                           xaxis_range=[0, 110])
+                           xaxis_range=[0, 110], height=400)
 
     # Complaints pie
     comp_totals = df.groupby("complaint_category")["complaint_count"].sum().sort_values(ascending=False).reset_index()
@@ -93,21 +119,22 @@ def layout():
     fig_hm.update_xaxes(tickangle=-30)
 
     return html.Div([
-        page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
+        html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
+                 style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
         html.Div([
-            html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                     style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
-            html.Div([
-                html.Div([dcc.Graph(figure=fig_nps, config={"displayModeBar": False}, style={"height": "300px"})],
-                         style={"flex": "1.2", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                html.Div([dcc.Graph(figure=fig_pie, config={"displayModeBar": False}, style={"height": "300px"})],
-                         style={"flex": "1", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-            ], style={"display": "flex", "gap": "14px", "marginBottom": "14px"}),
-            html.Div([
-                html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False}, style={"height": "260px"})],
-                         style={"flex": "1.5", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                html.Div([dcc.Graph(figure=fig_hm, config={"displayModeBar": False}, style={"height": "260px"})],
-                         style={"flex": "1", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-            ], style={"display": "flex", "gap": "14px"}),
-        ], style={"padding": "20px 28px"})
+            html.Div([dcc.Graph(figure=fig_nps, config={"displayModeBar": False})],
+                     style={"flex": "1.2", "background": "#161616", "border": "1px solid #222", 
+                            "borderRadius": "10px", "padding": "16px"}),
+            html.Div([dcc.Graph(figure=fig_pie, config={"displayModeBar": False})],
+                     style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                            "borderRadius": "10px", "padding": "16px"}),
+        ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
+        html.Div([
+            html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False})],
+                     style={"flex": "1.5", "background": "#161616", "border": "1px solid #222", 
+                            "borderRadius": "10px", "padding": "16px"}),
+            html.Div([dcc.Graph(figure=fig_hm, config={"displayModeBar": False})],
+                     style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                            "borderRadius": "10px", "padding": "16px"}),
+        ], style={"display": "flex", "gap": "14px", "flexWrap": "wrap"}),
     ])
