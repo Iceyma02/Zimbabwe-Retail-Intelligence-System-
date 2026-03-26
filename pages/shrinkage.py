@@ -12,15 +12,26 @@ from components.shared import *
 
 dash.register_page(__name__, path="/shrinkage", name="Shrinkage & Loss", order=14)
 
-def flatten_column(series):
-    """Flatten a column that might contain arrays/lists"""
+def extract_string(value):
+    """Extract string from any nested structure"""
+    if value is None:
+        return "Unknown"
+    if isinstance(value, (list, tuple, np.ndarray)):
+        if len(value) > 0:
+            return str(value[0])
+        return "Unknown"
+    if hasattr(value, 'iloc'):  # Handle Series
+        try:
+            return str(value.iloc[0])
+        except:
+            return str(value)
+    return str(value)
+
+def flatten_series(series):
+    """Flatten a Series that might contain nested structures"""
     result = []
     for val in series:
-        if isinstance(val, (list, tuple, np.ndarray)):
-            # If it's a list/array, take the first element
-            result.append(str(val[0]) if len(val) > 0 else "Unknown")
-        else:
-            result.append(str(val) if val is not None else "Unknown")
+        result.append(extract_string(val))
     return result
 
 def layout():
@@ -41,43 +52,46 @@ def layout():
         # Make a copy
         df_shrink = df.copy()
         
-        # Flatten the store_name column (extract from nested structures)
-        if "store_name" in df_shrink.columns:
-            df_shrink["store_name"] = flatten_column(df_shrink["store_name"])
-        else:
-            df_shrink["store_name"] = "Unknown"
-        
-        # Flatten month column
-        if "month" in df_shrink.columns:
-            df_shrink["month"] = flatten_column(df_shrink["month"])
-        else:
-            df_shrink["month"] = "Unknown"
-        
-        # Flatten cause column
-        if "cause" in df_shrink.columns:
-            df_shrink["cause"] = flatten_column(df_shrink["cause"])
-        else:
-            df_shrink["cause"] = "Unknown"
+        # Convert all columns to strings to avoid nested issues
+        df_shrink = df_shrink.applymap(lambda x: extract_string(x) if not isinstance(x, (int, float)) else x)
         
         # Ensure value_usd is numeric
         df_shrink["value_usd"] = pd.to_numeric(df_shrink["value_usd"], errors='coerce').fillna(0)
+        
+        # Ensure store_name exists and is string
+        if "store_name" in df_shrink.columns:
+            df_shrink["store_name"] = df_shrink["store_name"].astype(str)
+        else:
+            df_shrink["store_name"] = "Unknown"
+        
+        # Ensure month exists
+        if "month" in df_shrink.columns:
+            df_shrink["month"] = df_shrink["month"].astype(str)
+        else:
+            df_shrink["month"] = "Unknown"
+        
+        # Ensure cause exists
+        if "cause" in df_shrink.columns:
+            df_shrink["cause"] = df_shrink["cause"].astype(str)
+        else:
+            df_shrink["cause"] = "Unknown"
         
         # Calculate totals
         total_loss = df_shrink["value_usd"].sum()
         
         # Group by month
-        monthly_totals = df_shrink.groupby("month")["value_usd"].sum()
-        avg_monthly = monthly_totals.mean() if not monthly_totals.empty else 0
+        monthly_totals = df_shrink.groupby("month", as_index=False)["value_usd"].sum()
+        avg_monthly = monthly_totals["value_usd"].mean() if not monthly_totals.empty else 0
         
-        # Group by store_name
-        store_loss = df_shrink.groupby("store_name")["value_usd"].sum()
-        if not store_loss.empty:
-            worst_store = store_loss.idxmax()
+        # Group by store_name - use as_index=False to avoid index issues
+        store_loss_df = df_shrink.groupby("store_name", as_index=False)["value_usd"].sum()
+        if not store_loss_df.empty:
+            worst_store = store_loss_df.loc[store_loss_df["value_usd"].idxmax(), "store_name"]
         else:
             worst_store = "N/A"
         
         # Calculate theft losses
-        theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum()
+        theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum() if "cause" in df_shrink.columns else 0
 
         kpis = [
             kpi_card("Total Losses (6mo)", f"${total_loss:,.0f}", None, None, "fa-circle-minus", "#ef4444"),
@@ -87,7 +101,7 @@ def layout():
         ]
 
         # Cause chart
-        cause_totals = df_shrink.groupby("cause")["value_usd"].sum().sort_values(ascending=False).reset_index()
+        cause_totals = df_shrink.groupby("cause", as_index=False)["value_usd"].sum().sort_values("value_usd", ascending=False)
         if not cause_totals.empty:
             colors = ["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"]
             fig_cause = go.Figure(go.Bar(
@@ -101,7 +115,7 @@ def layout():
             fig_cause.update_layout(**CHART_LAYOUT, title={"text": "No cause data"})
 
         # Store chart
-        store_totals_df = df_shrink.groupby("store_name")["value_usd"].sum().sort_values(ascending=False).reset_index()
+        store_totals_df = df_shrink.groupby("store_name", as_index=False)["value_usd"].sum().sort_values("value_usd", ascending=False)
         if not store_totals_df.empty:
             fig_store = go.Figure(go.Bar(
                 x=store_totals_df["value_usd"], y=store_totals_df["store_name"], orientation="h",
@@ -119,7 +133,7 @@ def layout():
             fig_store.update_layout(**CHART_LAYOUT, title={"text": "No store data"})
 
         # Trend chart
-        monthly = df_shrink.groupby(["month", "cause"])["value_usd"].sum().reset_index()
+        monthly = df_shrink.groupby(["month", "cause"], as_index=False)["value_usd"].sum()
         if not monthly.empty:
             fig_trend = px.bar(monthly, x="month", y="value_usd", color="cause", barmode="stack")
             fig_trend.update_layout(**CHART_LAYOUT,
