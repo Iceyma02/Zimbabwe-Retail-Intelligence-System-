@@ -85,11 +85,11 @@ def layout():
                                          fill="tozeroy", fillcolor="rgba(249,115,22,0.07)"))
         fig_fuel.update_layout(**CHART_LAYOUT, title={"text": "Fuel Price USD/Litre (180 Days)", "font": {"color": "#ccc", "size": 13}})
 
-        # Load shedding
+        # Load shedding - FIXED: Removed alpha channel from color
         weekly_ls = df.set_index("date").resample("W")["load_shedding_hours"].mean().reset_index()
         ls_colors = ["#ef4444" if h > 8 else "#f97316" if h > 4 else "#22c55e" for h in weekly_ls["load_shedding_hours"]]
         fig_ls = go.Figure(go.Bar(x=weekly_ls["date"], y=weekly_ls["load_shedding_hours"], marker_color=ls_colors))
-        fig_ls.add_hline(y=8, line_dash="dash", line_color="#ef444450", annotation_text="Critical (8h)")
+        fig_ls.add_hline(y=8, line_dash="dash", line_color="#ef4444", annotation_text="Critical (8h)")
         fig_ls.update_layout(**CHART_LAYOUT, title={"text": "Weekly Avg Load Shedding Hours", "font": {"color": "#ccc", "size": 13}})
 
         # Seasonal calendar
