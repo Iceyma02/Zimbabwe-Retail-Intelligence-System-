@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd /app && python -c \"from data.generate_data import save_to_sqlite; save_to_sqlite()\" && gunicorn app:server --bind 0.0.0.0:$PORT --workers 2 --timeout 120",
+    "startCommand": "gunicorn app:server --bind 0.0.0.0:$PORT --workers 2 --timeout 120",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
