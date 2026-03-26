@@ -33,11 +33,30 @@ def get_reorder_data():
         # Reset index to avoid alignment issues
         inv = inv.reset_index(drop=True)
         
-        # Ensure numeric columns are properly formatted
-        inv["current_stock"] = pd.to_numeric(inv["current_stock"], errors='coerce').fillna(0)
-        inv["reorder_point"] = pd.to_numeric(inv["reorder_point"], errors='coerce').fillna(0)
-        inv["reorder_qty"] = pd.to_numeric(inv["reorder_qty"], errors='coerce').fillna(0)
-        inv["unit_cost"] = pd.to_numeric(inv["unit_cost"], errors='coerce').fillna(0)
+        # Convert columns to numeric, handling nested structures
+        def safe_numeric(series):
+            """Safely convert series to numeric, handling nested values"""
+            try:
+                # If series contains lists/arrays, extract first element
+                if series.dtype == 'object':
+                    # Check if first element is a list/array
+                    if len(series) > 0 and isinstance(series.iloc[0], (list, tuple, np.ndarray)):
+                        return pd.to_numeric(series.apply(lambda x: x[0] if len(x) > 0 else 0), errors='coerce')
+                return pd.to_numeric(series, errors='coerce')
+            except:
+                return pd.Series([0] * len(series), index=series.index)
+        
+        # Apply safe conversion
+        inv["current_stock"] = safe_numeric(inv["current_stock"])
+        inv["reorder_point"] = safe_numeric(inv["reorder_point"])
+        inv["reorder_qty"] = safe_numeric(inv["reorder_qty"])
+        inv["unit_cost"] = safe_numeric(inv["unit_cost"])
+        
+        # Fill NaN values
+        inv["current_stock"] = inv["current_stock"].fillna(0)
+        inv["reorder_point"] = inv["reorder_point"].fillna(0)
+        inv["reorder_qty"] = inv["reorder_qty"].fillna(0)
+        inv["unit_cost"] = inv["unit_cost"].fillna(0)
         
         # Get 30-day sales data
         sales_30 = get_sales(30)
@@ -60,13 +79,8 @@ def get_reorder_data():
         df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999)
         df["days_of_stock"] = df["days_of_stock"].fillna(999)
         
-        # Check if reorder is needed - ensure both are 1D arrays
-        current_stock_array = df["current_stock"].values.flatten() if hasattr(df["current_stock"].values, 'flatten') else df["current_stock"].values
-        reorder_point_array = df["reorder_point"].values.flatten() if hasattr(df["reorder_point"].values, 'flatten') else df["reorder_point"].values
-        
-        # Ensure same length
-        min_len = min(len(current_stock_array), len(reorder_point_array))
-        df["reorder_needed"] = current_stock_array[:min_len] <= reorder_point_array[:min_len]
+        # Check if reorder is needed
+        df["reorder_needed"] = df["current_stock"] <= df["reorder_point"]
         
         needs_reorder = df[df["reorder_needed"]].copy()
         
@@ -75,8 +89,8 @@ def get_reorder_data():
         
         # Calculate urgency score
         needs_reorder["urgency_score"] = (
-            (1 / (needs_reorder["days_of_stock"].values + 0.5)) * 0.6 +
-            (needs_reorder["reorder_point"].values / (needs_reorder["current_stock"].values + 1)) * 0.4
+            (1 / (needs_reorder["days_of_stock"] + 0.5)) * 0.6 +
+            (needs_reorder["reorder_point"] / (needs_reorder["current_stock"] + 1)) * 0.4
         )
         
         needs_reorder["urgency_score"] = needs_reorder["urgency_score"].replace([float('inf'), -float('inf')], 1.0)
