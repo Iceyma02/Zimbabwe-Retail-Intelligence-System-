@@ -22,7 +22,7 @@ from data.db import (
 # Import from components
 from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
-dash.register_page(__name__, path="/page-path", name="Page Name", order=0)
+dash.register_page(__name__, path="/supply-chain", name="Supply Chain", order=8)
 
 PIPELINE_STAGES = ["ORDER_PLACED", "DISPATCHED", "IN_TRANSIT", "AT_WAREHOUSE", "DELIVERED"]
 STAGE_COLORS = {"ORDER_PLACED": "#6b7280", "DISPATCHED": "#8b5cf6", "IN_TRANSIT": "#3b82f6",
