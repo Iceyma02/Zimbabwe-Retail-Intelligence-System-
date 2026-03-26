@@ -34,7 +34,6 @@ def layout():
                          "order_id", "expected_delivery", "delay_days"]
         for col in required_cols:
             if col not in df.columns:
-                print(f"Warning: Missing column {col} in logistics data")
                 df[col] = None if col != "delay_days" else 0
         
         status_counts = df["status"].value_counts().to_dict()
@@ -90,9 +89,13 @@ def layout():
                 x=sup_val["order_value_usd"], y=sup_val["supplier_name"],
                 orientation="h", marker_color="#3b82f6"
             ))
-            fig_val.update_layout(**CHART_LAYOUT,
-                                   title={"text": "Order Value by Supplier (Top 10)", "font": {"color": "#ccc", "size": 13}},
-                                   yaxis={"categoryorder": "total ascending"})
+            # Fix: Don't use **CHART_LAYOUT with yaxis separately - merge them properly
+            chart_layout_copy = CHART_LAYOUT.copy()
+            chart_layout_copy.update({
+                "title": {"text": "Order Value by Supplier (Top 10)", "font": {"color": "#ccc", "size": 13}},
+                "yaxis": {"categoryorder": "total ascending"}
+            })
+            fig_val.update_layout(**chart_layout_copy)
         else:
             fig_val = go.Figure()
             fig_val.update_layout(**CHART_LAYOUT, title={"text": "No supplier data", "font": {"color": "#ccc"}})
