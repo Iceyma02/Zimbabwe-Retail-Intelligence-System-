@@ -1,187 +1,264 @@
-"""Reorder Optimizer — Page 8"""
+"""Executive Reports — Page 17"""
 import dash
-from dash import html, dcc, callback, Input, Output
+from dash import html, dcc, callback, Input, Output, State  # Add State here
 import plotly.graph_objects as go
 import pandas as pd
-import numpy as np
+from datetime import datetime
 import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from data.db import *
+from components.shared import *
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data.db import get_inventory_simple, get_sales
-from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
-
-dash.register_page(__name__, path="/reorder", name="Reorder Optimizer", order=7)
-
-
-def get_reorder_data():
-    """Get products that need reordering with urgency scores"""
-    try:
-        inv = get_inventory_simple()
-        
-        if inv.empty:
-            print("Warning: No inventory data found")
-            return pd.DataFrame()
-        
-        # Get 30-day sales data
-        sales_30 = get_sales(30)
-        
-        # Calculate average daily sales per product
-        if not sales_30.empty:
-            avg_daily = sales_30.groupby("product_id")["units_sold"].mean().reset_index()
-            avg_daily.columns = ["product_id", "avg_daily_sales"]
-            df = inv.merge(avg_daily, on="product_id", how="left")
-        else:
-            df = inv.copy()
-            df["avg_daily_sales"] = 1.0  # Default if no sales data
-        
-        # Fill missing values
-        df["avg_daily_sales"] = df["avg_daily_sales"].fillna(1.0)
-        df["avg_daily_sales"] = df["avg_daily_sales"].clip(lower=0.1)  # Prevent division by zero
-        
-        # Calculate days of stock
-        df["days_of_stock"] = (df["current_stock"] / df["avg_daily_sales"]).round(1)
-        df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999)
-        df["days_of_stock"] = df["days_of_stock"].fillna(999)
-        
-        # Check if reorder is needed
-        df["reorder_needed"] = df["current_stock"] <= df["reorder_point"]
-        needs_reorder = df[df["reorder_needed"]].copy()
-        
-        if needs_reorder.empty:
-            return needs_reorder
-        
-        # Calculate urgency score (higher = more urgent)
-        needs_reorder["urgency_score"] = (
-            (1 / (needs_reorder["days_of_stock"] + 0.5)) * 0.6 +
-            (needs_reorder["reorder_point"] / (needs_reorder["current_stock"] + 1)) * 0.4
-        )
-        
-        # Ensure urgency_score is finite
-        needs_reorder["urgency_score"] = needs_reorder["urgency_score"].replace([float('inf'), -float('inf')], 1.0)
-        needs_reorder["urgency_score"] = needs_reorder["urgency_score"].fillna(1.0)
-        
-        return needs_reorder.sort_values("urgency_score", ascending=False)
-        
-    except Exception as e:
-        print(f"Error in get_reorder_data: {e}")
-        return pd.DataFrame()
-
+dash.register_page(__name__, path="/reports", name="Executive Reports", order=16)
 
 def layout():
-    """Layout for reorder optimizer page"""
-    try:
-        needs_reorder = get_reorder_data()
-        
-        if needs_reorder.empty:
-            # No items need reordering
-            return html.Div([
-                page_header("Reorder Optimizer", "Smart reorder suggestions based on stock levels, demand and supplier lead times", "fa-rotate"),
+    return html.Div([
+        page_header("Executive Reports", "One-click board-ready summaries — PDF export for leadership", "fa-file-pdf"),
+        html.Div([
+            # Report config card
+            html.Div([
                 html.Div([
+                    html.Div("📋 Report Configuration", style={
+                        "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
+                        "letterSpacing": "1px", "marginBottom": "16px"
+                    }),
                     html.Div([
                         html.Div([
-                            html.Div("✅ All Stock Levels Healthy", style={
-                                "fontSize": "24px", "fontWeight": "700", "color": "#22c55e", "marginBottom": "16px"
-                            }),
-                            html.Div("No items currently need reordering. All stock levels are above reorder points.",
-                                    style={"color": "#888", "fontSize": "14px"}),
-                        ], style={"textAlign": "center", "padding": "60px"})
-                    ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "40px"})
-                ], style={"padding": "20px 28px"})
+                            html.Label("Report Type", style={"color": "#888", "fontSize": "12px", "marginBottom": "6px", "display": "block"}),
+                            dcc.Dropdown(
+                                id="rpt-type",
+                                options=[
+                                    {"label": "📊 Monthly Executive Summary", "value": "monthly"},
+                                    {"label": "🚨 Urgent Operations Alert", "value": "ops"},
+                                    {"label": "💰 Financial Performance", "value": "finance"},
+                                    {"label": "🔄 Supply Chain Status", "value": "supply"},
+                                ],
+                                value="monthly", clearable=False,
+                                style={"width": "100%"}
+                            )
+                        ], style={"flex": 1}),
+                        html.Div([
+                            html.Label("Period", style={"color": "#888", "fontSize": "12px", "marginBottom": "6px", "display": "block"}),
+                            dcc.Dropdown(
+                                id="rpt-period",
+                                options=[
+                                    {"label": "Last 30 Days", "value": 30},
+                                    {"label": "Last 60 Days", "value": 60},
+                                    {"label": "Last 90 Days", "value": 90},
+                                ],
+                                value=30, clearable=False,
+                                style={"width": "100%"}
+                            )
+                        ], style={"width": "160px"}),
+                        html.Div([
+                            html.Label("\u00a0", style={"display": "block", "marginBottom": "6px"}),
+                            html.Button("🔄 Generate Report", id="rpt-generate-btn",
+                                        style={
+                                            "background": "#00c853", "color": "#fff",
+                                            "border": "none", "borderRadius": "6px",
+                                            "padding": "9px 20px", "cursor": "pointer",
+                                            "fontFamily": "'DM Sans', sans-serif",
+                                            "fontWeight": "600", "fontSize": "13px",
+                                            "width": "100%"
+                                        })
+                        ], style={"width": "180px"}),
+                    ], style={"display": "flex", "gap": "14px", "alignItems": "flex-end"})
+                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px",
+                          "marginBottom": "20px"})
+            ]),
+
+            # Report preview area
+            html.Div(id="rpt-preview")
+        ], style={"padding": "20px 28px"})
+    ])
+
+
+def build_report_preview(report_type, days):
+    """Build a beautiful HTML report preview"""
+    kpis = get_national_kpis(days)
+    store_rev = get_store_revenue_summary(days)
+    inv = get_inventory_simple()
+    credit = get_supplier_credit()
+    economic = get_economic_indicators()
+
+    revenue = kpis["total_revenue"].iloc[0] if not kpis.empty else 0
+    profit = kpis["total_profit"].iloc[0] if not kpis.empty else 0
+    margin = kpis["margin_pct"].iloc[0] if not kpis.empty else 0
+    critical_stock = len(inv[inv["status"] == "CRITICAL"]) if not inv.empty else 0
+    low_stock = len(inv[inv["status"] == "LOW"]) if not inv.empty else 0
+    outstanding_debt = credit["outstanding_usd"].sum() if not credit.empty else 0
+    stopped_suppliers = len(credit[credit["supplier_status"] == "STOPPED"]["supplier_name"].unique()) if not credit.empty else 0
+    latest_zig = economic["usd_zig_rate"].iloc[0] if not economic.empty else "N/A"
+    latest_inflation = economic["inflation_rate_percent"].iloc[0] if not economic.empty else "N/A"
+
+    top_store = store_rev.iloc[0] if not store_rev.empty else None
+    bottom_store = store_rev.iloc[-1] if not store_rev.empty else None
+
+    generated_at = datetime.now().strftime("%B %d, %Y at %H:%M")
+
+    # Risk assessment
+    risks = []
+    if critical_stock > 10:
+        risks.append(f"⚠️  {critical_stock} products at CRITICAL stock levels across all stores")
+    if stopped_suppliers > 0:
+        risks.append(f"🔴 {stopped_suppliers} supplier(s) have stopped trading due to outstanding payments")
+    if outstanding_debt > 50000:
+        risks.append(f"💳 Total supplier debt of ${outstanding_debt:,.0f} requires urgent attention")
+    if margin < 12:
+        risks.append(f"📉 National profit margin at {margin:.1f}% — below the 12% threshold")
+    if not risks:
+        risks.append("✅ No critical risks identified in this period")
+
+    # Wins
+    wins = []
+    if margin > 15:
+        wins.append(f"✅ Strong profit margin at {margin:.1f}%")
+    if top_store is not None:
+        wins.append(f"✅ {top_store['store_name']} leading with ${top_store['total_revenue']:,.0f} revenue")
+    wins.append(f"✅ {9 - critical_stock // 5} of 9 stores operating at healthy stock levels")
+
+    def metric_row(label, value, color="#fff"):
+        return html.Div([
+            html.Span(label, style={"color": "#888", "fontSize": "13px", "flex": 1}),
+            html.Span(value, style={"color": color, "fontWeight": "700", "fontSize": "14px"})
+        ], style={"display": "flex", "padding": "8px 0", "borderBottom": "1px solid #1e1e1e"})
+
+    report = html.Div([
+        # Report header
+        html.Div([
+            html.Div([
+                html.Div([
+                    html.Span("PnP", style={"color": "#00c853", "fontWeight": "800", "fontSize": "22px"}),
+                    html.Span(" Zimbabwe", style={"color": "#fff", "fontSize": "18px"}),
+                ]),
+                html.Div("Retail Intelligence Platform — Executive Report",
+                         style={"color": "#888", "fontSize": "12px"}),
+            ]),
+            html.Div([
+                html.Div(f"Generated: {generated_at}", style={"color": "#666", "fontSize": "11px", "textAlign": "right"}),
+                html.Div(f"Period: Last {days} days", style={"color": "#888", "fontSize": "11px", "textAlign": "right"}),
             ])
-        
-        total_need = len(needs_reorder)
-        critical_need = len(needs_reorder[needs_reorder["days_of_stock"] < 3])
-        total_order_value = (needs_reorder["reorder_qty"] * needs_reorder["unit_cost"]).sum()
+        ], style={"display": "flex", "justifyContent": "space-between", "alignItems": "center",
+                  "borderBottom": "2px solid #e31837", "paddingBottom": "16px", "marginBottom": "24px"}),
 
-        kpis = [
-            kpi_card("Items to Reorder", str(total_need), None, None, "fa-rotate", "#f97316"),
-            kpi_card("Critical (<3 days)", str(critical_need), None, None, "fa-fire", "#ef4444"),
-            kpi_card("Est. Order Value", f"${total_order_value:,.0f}", None, None, "fa-dollar-sign", "#3b82f6"),
-        ]
-
-        # Urgency chart - top 20
-        top20 = needs_reorder.head(20)
-        fig = go.Figure(go.Bar(
-            x=top20["urgency_score"].round(2), 
-            y=top20["product_name"].str[:35],
-            orientation="h",
-            marker_color=["#ef4444" if d < 3 else "#f97316" if d < 7 else "#eab308"
-                          for d in top20["days_of_stock"]],
-            text=top20["days_of_stock"].apply(lambda x: f"{x:.0f}d left"),
-            textposition="outside",
-            textfont={"size": 10}
-        ))
-        fig.update_layout(
-            **CHART_LAYOUT,
-            title={"text": "Top 20 Items by Reorder Urgency Score", "font": {"color": "#ccc", "size": 13}},
-            yaxis={"categoryorder": "total ascending", "automargin": True},
-            height=500,
-            margin={"l": 150}
-        )
-
-        # Table
-        headers = ["Product", "Store", "Current Stock", "Days Left", "Reorder Qty", "Order Value", "Urgency"]
-        header_row = html.Tr([html.Th(h, style={
-            "color": "#666", "fontSize": "11px", "padding": "8px 10px",
-            "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"
-        }) for h in headers])
-        
-        rows = []
-        max_score = needs_reorder["urgency_score"].max() if len(needs_reorder) > 0 else 1
-        
-        for _, row in needs_reorder.head(50).iterrows():
-            days = row["days_of_stock"]
-            urgency_color = "#ef4444" if days < 3 else "#f97316" if days < 7 else "#eab308"
-            order_val = row["reorder_qty"] * row["unit_cost"]
-            urgency_pct = min(row["urgency_score"] / max_score * 100, 100)
-            
-            rows.append(html.Tr([
-                html.Td(row["product_name"][:28], style={"color": "#ddd", "padding": "7px 10px", "fontSize": "12px"}),
-                html.Td(row["store_name"], style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
-                html.Td(str(row["current_stock"]), style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
-                html.Td(f"{days:.0f}d", style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
-                html.Td(str(int(row["reorder_qty"])), style={"color": "#3b82f6", "padding": "7px 10px"}),
-                html.Td(f"${order_val:,.0f}", style={"color": "#22c55e", "padding": "7px 10px"}),
-                html.Td(html.Div(style={
-                    "width": f"{urgency_pct:.0f}%",
-                    "height": "6px", "background": urgency_color, "borderRadius": "3px"
-                }), style={"padding": "7px 10px", "width": "80px"}),
-            ], style={"borderBottom": "1px solid #1a1a1a"}))
-        
-        table = html.Table([html.Thead(header_row), html.Tbody(rows)],
-                          style={"width": "100%", "borderCollapse": "collapse"})
-
-        return html.Div([
-            page_header("Reorder Optimizer", "Smart reorder suggestions based on stock levels, demand and supplier lead times", "fa-rotate"),
-            html.Div([
-                html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
-                html.Div([
-                    dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "500px"})
-                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px",
-                          "padding": "16px", "marginBottom": "14px"}),
-                html.Div([
-                    html.Div("Reorder Queue — Prioritised by Urgency", style={
-                        "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
-                        "letterSpacing": "1px", "marginBottom": "14px"
-                    }),
-                    table
-                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
-            ], style={"padding": "20px 28px"})
-        ])
-        
-    except Exception as e:
-        print(f"Error in reorder layout: {e}")
-        return html.Div([
-            page_header("Reorder Optimizer", "Smart reorder suggestions based on stock levels, demand and supplier lead times", "fa-rotate"),
+        # National KPIs
+        html.Div([
+            html.Div("NATIONAL PERFORMANCE", style={"color": "#00c853", "fontSize": "11px",
+                                                      "textTransform": "uppercase", "letterSpacing": "1.5px",
+                                                      "fontWeight": "700", "marginBottom": "14px"}),
             html.Div([
                 html.Div([
-                    html.Div("⚠️ Error Loading Data", style={
-                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
+                    html.Div(f"${revenue:,.0f}", style={"color": "#fff", "fontSize": "32px",
+                                                         "fontWeight": "800", "fontFamily": "'Syne', sans-serif"}),
+                    html.Div("Total Revenue", style={"color": "#888", "fontSize": "11px"})
+                ], style={"flex": 1, "textAlign": "center", "padding": "16px",
+                           "background": "#1a1a1a", "borderRadius": "8px", "border": "1px solid #e3183720"}),
+                html.Div([
+                    html.Div(f"${profit:,.0f}", style={"color": "#22c55e", "fontSize": "32px",
+                                                        "fontWeight": "800", "fontFamily": "'Syne', sans-serif"}),
+                    html.Div("Net Profit", style={"color": "#888", "fontSize": "11px"})
+                ], style={"flex": 1, "textAlign": "center", "padding": "16px",
+                           "background": "#1a1a1a", "borderRadius": "8px", "border": "1px solid #22c55e20"}),
+                html.Div([
+                    html.Div(f"{margin:.1f}%", style={
+                        "color": "#22c55e" if margin > 15 else "#f97316" if margin > 10 else "#ef4444",
+                        "fontSize": "32px", "fontWeight": "800", "fontFamily": "'Syne', sans-serif"
                     }),
-                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database exists and contains the required tables.",
-                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
-                ], style={"textAlign": "center", "padding": "60px"})
-            ], style={"padding": "20px 28px"})
-        ])
+                    html.Div("Profit Margin", style={"color": "#888", "fontSize": "11px"})
+                ], style={"flex": 1, "textAlign": "center", "padding": "16px",
+                           "background": "#1a1a1a", "borderRadius": "8px"}),
+                html.Div([
+                    html.Div("9", style={"color": "#3b82f6", "fontSize": "32px",
+                                          "fontWeight": "800", "fontFamily": "'Syne', sans-serif"}),
+                    html.Div("Active Stores", style={"color": "#888", "fontSize": "11px"})
+                ], style={"flex": 1, "textAlign": "center", "padding": "16px",
+                           "background": "#1a1a1a", "borderRadius": "8px"}),
+            ], style={"display": "flex", "gap": "12px"})
+        ], style={"marginBottom": "24px"}),
+
+        # Two columns — Store ranking + Financial detail
+        html.Div([
+            html.Div([
+                html.Div("STORE RANKINGS", style={"color": "#888", "fontSize": "11px",
+                                                   "textTransform": "uppercase", "letterSpacing": "1px",
+                                                   "marginBottom": "12px"}),
+                *[metric_row(
+                    f"{'🥇' if i==0 else '🥈' if i==1 else '🥉' if i==2 else f'#{i+1}'} {row['store_name']}",
+                    f"${row['total_revenue']:,.0f}",
+                    "#22c55e" if i < 3 else "#fff"
+                ) for i, (_, row) in enumerate(store_rev.iterrows())]
+            ], style={"flex": 1, "background": "#1a1a1a", "borderRadius": "8px", "padding": "16px"}),
+
+            html.Div([
+                html.Div("FINANCIAL HEALTH", style={"color": "#888", "fontSize": "11px",
+                                                      "textTransform": "uppercase", "letterSpacing": "1px",
+                                                      "marginBottom": "12px"}),
+                metric_row("Supplier Debt Outstanding", f"${outstanding_debt:,.0f}",
+                            "#ef4444" if outstanding_debt > 50000 else "#f97316"),
+                metric_row("Stopped Suppliers", str(stopped_suppliers),
+                            "#ef4444" if stopped_suppliers > 0 else "#22c55e"),
+                metric_row("Critical Stock Items", str(critical_stock),
+                            "#ef4444" if critical_stock > 10 else "#eab308"),
+                metric_row("Low Stock Items", str(low_stock), "#f97316"),
+                metric_row("USD / ZiG Rate", str(latest_zig), "#eab308"),
+                metric_row("Inflation Rate", f"{latest_inflation}%", "#ef4444"),
+            ], style={"flex": 1, "background": "#1a1a1a", "borderRadius": "8px", "padding": "16px"}),
+        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px"}),
+
+        # Risks & Wins
+        html.Div([
+            html.Div([
+                html.Div("🚨 KEY RISKS", style={"color": "#ef4444", "fontSize": "12px",
+                                                  "fontWeight": "700", "marginBottom": "12px"}),
+                *[html.Div(r, style={"color": "#ddd", "fontSize": "13px", "padding": "6px 0",
+                                      "borderBottom": "1px solid #2a2a2a"}) for r in risks]
+            ], style={"flex": 1, "background": "#1a0808", "border": "1px solid #ef444430",
+                       "borderRadius": "8px", "padding": "16px"}),
+
+            html.Div([
+                html.Div("✅ WINS THIS PERIOD", style={"color": "#22c55e", "fontSize": "12px",
+                                                         "fontWeight": "700", "marginBottom": "12px"}),
+                *[html.Div(w, style={"color": "#ddd", "fontSize": "13px", "padding": "6px 0",
+                                      "borderBottom": "1px solid #2a2a2a"}) for w in wins]
+            ], style={"flex": 1, "background": "#0a1a0a", "border": "1px solid #22c55e30",
+                       "borderRadius": "8px", "padding": "16px"}),
+        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px"}),
+
+        # Recommended Actions
+        html.Div([
+            html.Div("⚡ RECOMMENDED ACTIONS", style={"color": "#eab308", "fontSize": "12px",
+                                                        "fontWeight": "700", "marginBottom": "12px"}),
+            *[html.Div(f"{i+1}. {action}", style={"color": "#ddd", "fontSize": "13px",
+                                                    "padding": "6px 0", "borderBottom": "1px solid #2a2a2a"})
+              for i, action in enumerate([
+                  f"Review and prioritise payment to {stopped_suppliers} stopped supplier(s) immediately",
+                  f"Initiate emergency restock for {critical_stock} products at critical levels",
+                  "Schedule weekly ZiG rate review — adjust pricing if rate exceeds 16.0",
+                  "Run Christmas stock build-up analysis if approaching November/December",
+                  "Review bottom-performing store operations for cost reduction opportunities"
+              ])]
+        ], style={"background": "#1a1500", "border": "1px solid #eab30830",
+                  "borderRadius": "8px", "padding": "16px"}),
+
+        # Footer
+        html.Div([
+            html.Div("This report was generated by ZimRetail IQ Retail Intelligence Platform",
+                     style={"color": "#444", "fontSize": "11px", "textAlign": "center"}),
+            html.Div("Data is simulated for portfolio demonstration purposes",
+                     style={"color": "#333", "fontSize": "10px", "textAlign": "center", "marginTop": "4px"})
+        ], style={"marginTop": "24px", "paddingTop": "16px", "borderTop": "1px solid #1e1e1e"})
+
+    ], style={"background": "#111", "border": "1px solid #222", "borderRadius": "10px", "padding": "28px"})
+
+    return report
+
+
+@callback(
+    Output("rpt-preview", "children"),
+    Input("rpt-generate-btn", "n_clicks"),
+    State("rpt-type", "value"),
+    State("rpt-period", "value"),
+    prevent_initial_call=False
+)
+def generate_report(n_clicks, report_type, days):
+    return build_report_preview(report_type, days)
