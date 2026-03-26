@@ -26,10 +26,19 @@ def layout():
                 ], style={"padding": "20px 28px"})
             ])
         
-        total_loss = df["value_usd"].sum()
-        avg_monthly = df.groupby("month")["value_usd"].sum().mean()
-        worst_store = df.groupby("store_name")["value_usd"].sum().idxmax()
-        theft = df[df["cause"] == "Theft"]["value_usd"].sum()
+        # Make a copy to avoid modifying original
+        df_shrink = df.copy()
+        
+        # Ensure store_name is string to avoid grouping issues
+        df_shrink["store_name"] = df_shrink["store_name"].astype(str)
+        
+        total_loss = df_shrink["value_usd"].sum()
+        avg_monthly = df_shrink.groupby("month")["value_usd"].sum().mean()
+        
+        # Fixed: Properly handle store_name grouping
+        store_totals = df_shrink.groupby("store_name")["value_usd"].sum()
+        worst_store = store_totals.idxmax() if not store_totals.empty else "N/A"
+        theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum()
 
         kpis = [
             kpi_card("Total Losses (6mo)", f"${total_loss:,.0f}", None, None, "fa-circle-minus", "#ef4444"),
@@ -38,7 +47,7 @@ def layout():
             kpi_card("Highest Loss Store", worst_store[:15], None, None, "fa-store", "#eab308"),
         ]
 
-        cause_totals = df.groupby("cause")["value_usd"].sum().sort_values(ascending=False).reset_index()
+        cause_totals = df_shrink.groupby("cause")["value_usd"].sum().sort_values(ascending=False).reset_index()
         fig_cause = go.Figure(go.Bar(
             x=cause_totals["cause"], y=cause_totals["value_usd"],
             marker_color=["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"][:len(cause_totals)]
@@ -46,11 +55,11 @@ def layout():
         fig_cause.update_layout(**CHART_LAYOUT,
                                  title={"text": "Loss by Cause", "font": {"color": "#ccc", "size": 13}})
 
-        store_totals = df.groupby("store_name")["value_usd"].sum().sort_values(ascending=False).reset_index()
+        store_totals_df = df_shrink.groupby("store_name")["value_usd"].sum().sort_values(ascending=False).reset_index()
         fig_store = go.Figure(go.Bar(
-            x=store_totals["value_usd"], y=store_totals["store_name"], orientation="h",
+            x=store_totals_df["value_usd"], y=store_totals_df["store_name"], orientation="h",
             marker_color=["#ef4444" if i == 0 else "#f97316" if i < 3 else "#3b82f6"
-                          for i in range(len(store_totals))]
+                          for i in range(len(store_totals_df))]
         ))
         store_layout = CHART_LAYOUT.copy()
         store_layout.update({
@@ -59,7 +68,7 @@ def layout():
         })
         fig_store.update_layout(**store_layout)
 
-        monthly = df.groupby(["month", "cause"])["value_usd"].sum().reset_index()
+        monthly = df_shrink.groupby(["month", "cause"])["value_usd"].sum().reset_index()
         fig_trend = px.bar(monthly, x="month", y="value_usd", color="cause", barmode="stack")
         fig_trend.update_layout(**CHART_LAYOUT,
                                  title={"text": "Monthly Loss Trend by Cause", "font": {"color": "#ccc", "size": 13}})
@@ -71,7 +80,7 @@ def layout():
                         "fa-triangle-exclamation"),
             html.Div([
                 html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                         style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
+                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
                 html.Div([
                     html.Div([dcc.Graph(figure=fig_cause, config={"displayModeBar": False}, style={"height": "280px"})],
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
@@ -79,7 +88,7 @@ def layout():
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
                     html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False}, style={"height": "280px"})],
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px"}),
+                ], style={"display": "flex", "gap": "14px", "flexWrap": "wrap"}),
             ], style={"padding": "20px 28px"})
         ])
         
