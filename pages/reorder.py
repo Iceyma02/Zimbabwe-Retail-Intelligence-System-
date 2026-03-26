@@ -12,18 +12,38 @@ from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
 dash.register_page(__name__, path="/reorder", name="Reorder Optimizer", order=7)
 
-def flatten_column(series):
-    """Flatten a column that might contain arrays/lists"""
-    result = []
-    for val in series:
-        if isinstance(val, (list, tuple, np.ndarray)):
-            result.append(float(val[0]) if len(val) > 0 else 0)
-        else:
+def extract_id(value):
+    """Extract ID from nested structures"""
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, np.ndarray)):
+        if len(value) > 0:
+            return str(value[0])
+        return ""
+    if hasattr(value, 'iloc'):  # Handle Series
+        try:
+            return str(value.iloc[0])
+        except:
+            return str(value)
+    return str(value)
+
+def extract_float(value):
+    """Extract float from nested structures"""
+    try:
+        if value is None:
+            return 0.0
+        if isinstance(value, (list, tuple, np.ndarray)):
+            if len(value) > 0:
+                return float(value[0])
+            return 0.0
+        if hasattr(value, 'iloc'):  # Handle Series
             try:
-                result.append(float(val) if val is not None else 0)
+                return float(value.iloc[0])
             except:
-                result.append(0)
-    return result
+                return 0.0
+        return float(value)
+    except:
+        return 0.0
 
 def get_reorder_data():
     """Get products that need reordering with urgency scores"""
@@ -34,14 +54,18 @@ def get_reorder_data():
             print("Warning: No inventory data found")
             return pd.DataFrame()
         
-        # Reset index to avoid alignment issues
+        # Reset index
         inv = inv.reset_index(drop=True)
         
-        # Flatten all numeric columns
+        # Convert product_id to string for merging
+        if "product_id" in inv.columns:
+            inv["product_id"] = inv["product_id"].apply(extract_id)
+        
+        # Convert numeric columns
         numeric_cols = ["current_stock", "reorder_point", "reorder_qty", "unit_cost"]
         for col in numeric_cols:
             if col in inv.columns:
-                inv[col] = flatten_column(inv[col])
+                inv[col] = inv[col].apply(extract_float)
             else:
                 inv[col] = 0
         
@@ -50,12 +74,15 @@ def get_reorder_data():
         
         # Calculate average daily sales per product
         if not sales_30.empty:
-            # Flatten product_id if needed
+            # Convert product_id in sales to string
             if "product_id" in sales_30.columns:
-                sales_30["product_id"] = flatten_column(sales_30["product_id"])
+                sales_30["product_id"] = sales_30["product_id"].apply(extract_id)
             
             avg_daily = sales_30.groupby("product_id")["units_sold"].mean().reset_index()
             avg_daily.columns = ["product_id", "avg_daily_sales"]
+            # Ensure both are strings for merge
+            avg_daily["product_id"] = avg_daily["product_id"].astype(str)
+            inv["product_id"] = inv["product_id"].astype(str)
             df = inv.merge(avg_daily, on="product_id", how="left")
         else:
             df = inv.copy()
@@ -166,7 +193,7 @@ def layout():
             
             rows.append(html.Tr([
                 html.Td(row["product_name"][:28], style={"color": "#ddd", "padding": "7px 10px", "fontSize": "12px"}),
-                html.Td(row["store_name"], style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
+                html.Td(str(row["store_name"])[:20], style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
                 html.Td(str(row["current_stock"]), style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
                 html.Td(f"{days:.0f}d", style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
                 html.Td(str(int(row["reorder_qty"])), style={"color": "#3b82f6", "padding": "7px 10px"}),
