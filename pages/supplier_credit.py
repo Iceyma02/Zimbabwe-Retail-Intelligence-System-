@@ -70,7 +70,7 @@ def layout():
             kpi_card("Active Suppliers", str(active_count), None, None, "fa-handshake", "#22c55e"),
         ]
 
-        # Status chart
+        # Status chart - FIXED: Proper layout merging
         sup_status = df.groupby(["supplier_name", "supplier_status"])["outstanding_usd"].sum().reset_index()
         sup_status = sup_status.sort_values("outstanding_usd", ascending=False).head(14)
         status_color_map = {"ACTIVE": "#22c55e", "LIMITED_CREDIT": "#f97316", "STOPPED": "#ef4444"}
@@ -80,9 +80,14 @@ def layout():
             if not sub.empty:
                 fig_status.add_trace(go.Bar(x=sub["outstanding_usd"], y=sub["supplier_name"],
                                              name=status.replace("_", " "), orientation="h", marker_color=color))
-        fig_status.update_layout(**CHART_LAYOUT, barmode="stack",
-                                  title={"text": "Outstanding by Supplier & Status", "font": {"color": "#ccc", "size": 13}},
-                                  yaxis={"categoryorder": "total ascending"})
+        # Fixed: Create a copy and update instead of using ** twice
+        status_layout = CHART_LAYOUT.copy()
+        status_layout.update({
+            "barmode": "stack",
+            "title": {"text": "Outstanding by Supplier & Status", "font": {"color": "#ccc", "size": 13}},
+            "yaxis": {"categoryorder": "total ascending"}
+        })
+        fig_status.update_layout(**status_layout)
 
         # Aging - Fixed layout merging
         if "overdue_days" in df.columns:
