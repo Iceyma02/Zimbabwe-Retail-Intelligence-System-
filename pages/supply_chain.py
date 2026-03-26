@@ -1,158 +1,164 @@
-"""Supply Chain Pipeline — Page 9"""
+"""Customer Sentiment — Page 13"""
 import dash
 from dash import html, dcc
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
+import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.db import *
 from components.shared import *
 
-dash.register_page(__name__, path="/supply-chain", name="Supply Chain", order=8)
+dash.register_page(__name__, path="/sentiment", name="Customer Sentiment", order=12)
 
-PIPELINE_STAGES = ["ORDER_PLACED", "DISPATCHED", "IN_TRANSIT", "AT_WAREHOUSE", "DELIVERED"]
-STAGE_COLORS = {"ORDER_PLACED": "#6b7280", "DISPATCHED": "#8b5cf6", "IN_TRANSIT": "#3b82f6",
-                "AT_WAREHOUSE": "#06b6d4", "DELIVERED": "#22c55e", "DELAYED": "#ef4444"}
+def get_sentiment_data():
+    """Generate synthetic sentiment data from stores"""
+    try:
+        stores = get_stores()
+        
+        if stores.empty:
+            print("Warning: No stores found for sentiment data")
+            return pd.DataFrame()
+        
+        np.random.seed(77)
+        complaint_categories = ["Empty Shelves", "Long Queues", "Poor Service", "Pricing",
+                                 "Product Quality", "Cleanliness", "Parking", "Opening Hours"]
+        records = []
+        months = pd.date_range(end=pd.Timestamp.now(), periods=6, freq='ME').strftime("%Y-%m").tolist()
+        
+        for _, s in stores.iterrows():
+            base_nps = np.random.randint(28, 72)
+            for month in months:
+                nps_variation = base_nps + np.random.randint(-8, 8)
+                for cat in complaint_categories:
+                    records.append({
+                        "store_id": s["store_id"], 
+                        "store_name": s["name"], 
+                        "city": s["city"],
+                        "month": month, 
+                        "nps_score": max(0, min(100, nps_variation)),
+                        "complaint_category": cat, 
+                        "complaint_count": np.random.randint(2, 45)
+                    })
+        return pd.DataFrame(records)
+    except Exception as e:
+        print(f"Error generating sentiment data: {e}")
+        return pd.DataFrame()
+
 
 def layout():
-    """Layout for supply chain page with error handling"""
+    """Layout for sentiment page with error handling"""
     try:
-        df = get_logistics()
+        df = get_sentiment_data()
         
-        # Check if data is empty
         if df.empty:
             return html.Div([
-                page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
+                page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
                 html.Div([
-                    html.Div("No supply chain data available", 
+                    html.Div("No sentiment data available", 
                             style={"textAlign": "center", "padding": "60px", "color": "#888"})
                 ], style={"padding": "20px 28px"})
             ])
-        
-        # Ensure required columns exist
-        required_cols = ["status", "order_value_usd", "supplier_name", "store_name", 
-                         "order_id", "expected_delivery", "delay_days"]
-        for col in required_cols:
-            if col not in df.columns:
-                df[col] = None if col != "delay_days" else 0
-        
-        status_counts = df["status"].value_counts().to_dict()
-        delayed = df[df["status"] == "DELAYED"] if "DELAYED" in df["status"].values else pd.DataFrame()
 
-        # Pipeline flow
-        pipeline_nodes = []
-        for stage in PIPELINE_STAGES:
-            count = status_counts.get(stage, 0)
-            color = STAGE_COLORS.get(stage, "#888")
-            pipeline_nodes.append(html.Div([
-                html.Div(str(count), style={"fontSize": "28px", "fontWeight": "800", "color": color,
-                                             "fontFamily": "'Syne', sans-serif"}),
-                html.Div(stage.replace("_", " "), style={"color": "#888", "fontSize": "11px", "letterSpacing": "0.5px"}),
-                html.Div(style={"width": "100%", "height": "3px", "background": color,
-                                 "borderRadius": "2px", "marginTop": "8px"})
-            ], style={"flex": 1, "background": "#161616", "border": f"1px solid {color}40",
-                      "borderRadius": "10px", "padding": "16px 12px", "textAlign": "center"}))
-            if stage != PIPELINE_STAGES[-1]:
-                pipeline_nodes.append(html.Div("→", style={"color": "#444", "fontSize": "20px",
-                                                             "display": "flex", "alignItems": "center", "padding": "0 4px"}))
+        # Calculate KPIs
+        store_avg_nps = df.groupby("store_name")["nps_score"].mean()
+        national_nps = store_avg_nps.mean()
+        best_store = store_avg_nps.idxmax() if not store_avg_nps.empty else "N/A"
+        worst_store = store_avg_nps.idxmin() if not store_avg_nps.empty else "N/A"
+        total_complaints = df["complaint_count"].sum()
+        nps_color = "#22c55e" if national_nps > 60 else "#eab308" if national_nps > 40 else "#ef4444"
 
-        delayed_badge = None
-        if not delayed.empty:
-            delayed_badge = html.Div([
-                html.Span("⚠️ ", style={"fontSize": "14px"}),
-                html.Span(f"{len(delayed)} DELAYED orders",
-                          style={"color": "#ef4444", "fontWeight": "600", "fontSize": "13px"}),
-                html.Span(f" — Total value: ${delayed['order_value_usd'].sum():,.0f}",
-                          style={"color": "#888", "fontSize": "12px"})
-            ], style={"background": "#2d0a0a", "border": "1px solid #ef444440",
-                      "borderRadius": "8px", "padding": "10px 16px", "marginTop": "12px"})
+        kpis = [
+            kpi_card("National NPS", f"{national_nps:.0f}", None, None, "fa-star", nps_color),
+            kpi_card("Best Store", best_store[:16], None, None, "fa-trophy", "#22c55e"),
+            kpi_card("Needs Attention", worst_store[:16], None, None, "fa-circle-exclamation", "#ef4444"),
+            kpi_card("Total Complaints", f"{total_complaints:,}", None, None, "fa-comment-dots", "#f97316"),
+        ]
 
-        pipeline_block = html.Div([
-            html.Div(pipeline_nodes, style={"display": "flex", "alignItems": "stretch", "gap": "4px", "flexWrap": "wrap"}),
-            delayed_badge if delayed_badge else None
-        ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px",
-                  "padding": "20px", "marginBottom": "14px"})
-
-        # Status donut
-        status_df = df["status"].value_counts().reset_index()
-        status_df.columns = ["status", "count"]
-        fig_status = go.Figure(go.Pie(
-            labels=status_df["status"], values=status_df["count"], hole=0.45,
-            marker={"colors": [STAGE_COLORS.get(s, "#888") for s in status_df["status"]]}
+        # NPS by store
+        nps_by_store = df.groupby("store_name")["nps_score"].mean().sort_values(ascending=True).reset_index()
+        nps_colors = ["#22c55e" if n > 60 else "#eab308" if n > 40 else "#ef4444" for n in nps_by_store["nps_score"]]
+        fig_nps = go.Figure(go.Bar(
+            x=nps_by_store["nps_score"].round(0), y=nps_by_store["store_name"],
+            orientation="h", marker_color=nps_colors,
+            text=nps_by_store["nps_score"].apply(lambda x: f"{x:.0f}"), textposition="outside"
         ))
-        fig_status.update_layout(**CHART_LAYOUT, title={"text": "Order Status Distribution", "font": {"color": "#ccc", "size": 13}})
+        # Fixed: Removed alpha channel from colors
+        fig_nps.add_vline(x=60, line_dash="dash", line_color="#22c55e")
+        fig_nps.add_vline(x=40, line_dash="dash", line_color="#eab308")
+        fig_nps.update_layout(**CHART_LAYOUT, title={"text": "NPS Score by Store", "font": {"color": "#ccc", "size": 13}},
+                               xaxis_range=[0, 110], height=400)
 
-        # Value by supplier
-        sup_val = df.groupby("supplier_name")["order_value_usd"].sum().sort_values(ascending=False).head(10).reset_index()
-        if not sup_val.empty:
-            fig_val = go.Figure(go.Bar(
-                x=sup_val["order_value_usd"], y=sup_val["supplier_name"],
-                orientation="h", marker_color="#3b82f6"
-            ))
-            # Fix: Don't use **CHART_LAYOUT with yaxis separately - merge them properly
-            chart_layout_copy = CHART_LAYOUT.copy()
-            chart_layout_copy.update({
-                "title": {"text": "Order Value by Supplier (Top 10)", "font": {"color": "#ccc", "size": 13}},
-                "yaxis": {"categoryorder": "total ascending"}
-            })
-            fig_val.update_layout(**chart_layout_copy)
-        else:
-            fig_val = go.Figure()
-            fig_val.update_layout(**CHART_LAYOUT, title={"text": "No supplier data", "font": {"color": "#ccc"}})
+        # Complaints pie
+        comp_totals = df.groupby("complaint_category")["complaint_count"].sum().sort_values(ascending=False).reset_index()
+        fig_pie = go.Figure(go.Pie(
+            labels=comp_totals["complaint_category"], values=comp_totals["complaint_count"], hole=0.4,
+            marker={"colors": ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#06b6d4", "#ec4899"]}
+        ))
+        fig_pie.update_layout(**CHART_LAYOUT, title={"text": "Complaint Categories", "font": {"color": "#ccc", "size": 13}})
 
-        # Orders table
-        headers = ["Order ID", "Supplier", "Store", "Value", "Status", "Expected", "Delay"]
-        header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "7px 10px",
-                                                 "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
-                              for h in headers])
-        rows = []
-        for _, row in df.sort_values("order_value_usd", ascending=False).head(40).iterrows():
-            delay_days = int(row["delay_days"]) if pd.notna(row.get("delay_days", 0)) else 0
-            rows.append(html.Tr([
-                html.Td(row.get("order_id", "N/A"), style={"color": "#3b82f6", "padding": "6px 10px", "fontSize": "12px"}),
-                html.Td(row.get("supplier_name", "N/A"), style={"color": "#ddd", "padding": "6px 10px", "fontSize": "12px"}),
-                html.Td(row.get("store_name", row.get("store_id", "N/A")), style={"color": "#888", "padding": "6px 10px", "fontSize": "11px"}),
-                html.Td(f"${row.get('order_value_usd', 0):,.0f}", style={"color": "#22c55e", "padding": "6px 10px"}),
-                html.Td(status_badge(row.get("status", "UNKNOWN")), style={"padding": "6px 10px"}),
-                html.Td(row.get("expected_delivery", "N/A"), style={"color": "#aaa", "padding": "6px 10px", "fontSize": "11px"}),
-                html.Td(f"{delay_days}d" if delay_days > 0 else "—",
-                        style={"color": "#ef4444" if delay_days > 0 else "#444", "padding": "6px 10px"}),
-            ], style={"borderBottom": "1px solid #1a1a1a"}))
+        # NPS trend
+        nps_trend = df.groupby("month")["nps_score"].mean().reset_index()
+        fig_trend = go.Figure(go.Scatter(
+            x=nps_trend["month"], y=nps_trend["nps_score"],
+            mode="lines+markers", line={"color": "#3b82f6", "width": 2},
+            marker={"size": 7, "color": "#3b82f6"},
+            fill="tozeroy", fillcolor="rgba(59,130,246,0.08)"
+        ))
+        # Fixed: Removed alpha channel from colors
+        fig_trend.add_hline(y=60, line_dash="dash", line_color="#22c55e")
+        fig_trend.add_hline(y=40, line_dash="dash", line_color="#ef4444")
+        fig_trend.update_layout(**CHART_LAYOUT, title={"text": "National NPS Trend", "font": {"color": "#ccc", "size": 13}},
+                                 yaxis_range=[0, 100])
 
-        table = html.Table([html.Thead(header_row), html.Tbody(rows)],
-                           style={"width": "100%", "borderCollapse": "collapse"})
+        # Complaint heatmap
+        pivot = df.groupby(["store_name", "complaint_category"])["complaint_count"].sum().unstack(fill_value=0)
+        pivot.index = [n[:16] for n in pivot.index]
+        fig_hm = go.Figure(go.Heatmap(
+            z=pivot.values, x=list(pivot.columns), y=list(pivot.index),
+            colorscale=[[0, "#0d0d0d"], [0.5, "#00c853"], [1, "#22ff88"]], showscale=True
+        ))
+        fig_hm.update_layout(**CHART_LAYOUT, title={"text": "Store × Complaint Heatmap", "font": {"color": "#ccc", "size": 13}})
+        fig_hm.update_xaxes(tickangle=-30)
 
         return html.Div([
-            page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
+            page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
             html.Div([
-                pipeline_block,
+                html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
+                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
                 html.Div([
-                    html.Div([dcc.Graph(figure=fig_status, config={"displayModeBar": False}, style={"height": "260px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_val, config={"displayModeBar": False}, style={"height": "260px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px"}),
+                    html.Div([dcc.Graph(figure=fig_nps, config={"displayModeBar": False})],
+                             style={"flex": "1.2", "background": "#161616", "border": "1px solid #222", 
+                                    "borderRadius": "10px", "padding": "16px"}),
+                    html.Div([dcc.Graph(figure=fig_pie, config={"displayModeBar": False})],
+                             style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                                    "borderRadius": "10px", "padding": "16px"}),
+                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
                 html.Div([
-                    html.Div("Active Orders", style={"color": "#888", "fontSize": "11px", "textTransform": "uppercase",
-                                                      "letterSpacing": "1px", "marginBottom": "14px"}),
-                    table
-                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
+                    html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False})],
+                             style={"flex": "1.5", "background": "#161616", "border": "1px solid #222", 
+                                    "borderRadius": "10px", "padding": "16px"}),
+                    html.Div([dcc.Graph(figure=fig_hm, config={"displayModeBar": False})],
+                             style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                                    "borderRadius": "10px", "padding": "16px"}),
+                ], style={"display": "flex", "gap": "14px", "flexWrap": "wrap"}),
             ], style={"padding": "20px 28px"})
         ])
         
     except Exception as e:
-        print(f"Error in supply chain layout: {e}")
+        print(f"Error in sentiment layout: {e}")
         import traceback
         traceback.print_exc()
         return html.Div([
-            page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
+            page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
             html.Div([
                 html.Div([
                     html.Div("⚠️ Error Loading Data", style={
                         "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
                     }),
                     html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database contains logistics data.",
+                    html.Div("Please check that the database contains store data.",
                             style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
                 ], style={"textAlign": "center", "padding": "60px"})
             ], style={"padding": "20px 28px"})
