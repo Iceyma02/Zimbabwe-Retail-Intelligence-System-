@@ -33,6 +33,12 @@ def get_reorder_data():
         # Reset index to avoid alignment issues
         inv = inv.reset_index(drop=True)
         
+        # Ensure numeric columns are properly formatted
+        inv["current_stock"] = pd.to_numeric(inv["current_stock"], errors='coerce').fillna(0)
+        inv["reorder_point"] = pd.to_numeric(inv["reorder_point"], errors='coerce').fillna(0)
+        inv["reorder_qty"] = pd.to_numeric(inv["reorder_qty"], errors='coerce').fillna(0)
+        inv["unit_cost"] = pd.to_numeric(inv["unit_cost"], errors='coerce').fillna(0)
+        
         # Get 30-day sales data
         sales_30 = get_sales(30)
         
@@ -54,8 +60,14 @@ def get_reorder_data():
         df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999)
         df["days_of_stock"] = df["days_of_stock"].fillna(999)
         
-        # Check if reorder is needed - use .values to avoid alignment issues
-        df["reorder_needed"] = df["current_stock"].values <= df["reorder_point"].values
+        # Check if reorder is needed - ensure both are 1D arrays
+        current_stock_array = df["current_stock"].values.flatten() if hasattr(df["current_stock"].values, 'flatten') else df["current_stock"].values
+        reorder_point_array = df["reorder_point"].values.flatten() if hasattr(df["reorder_point"].values, 'flatten') else df["reorder_point"].values
+        
+        # Ensure same length
+        min_len = min(len(current_stock_array), len(reorder_point_array))
+        df["reorder_needed"] = current_stock_array[:min_len] <= reorder_point_array[:min_len]
+        
         needs_reorder = df[df["reorder_needed"]].copy()
         
         if needs_reorder.empty:
