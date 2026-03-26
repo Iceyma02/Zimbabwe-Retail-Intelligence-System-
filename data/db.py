@@ -16,9 +16,9 @@ def query(sql, params=None):
     conn = get_conn()
     try:
         df = pd.read_sql_query(sql, conn, params=params)
+        return df
     finally:
         conn.close()
-    return df
 
 
 def get_stores():
@@ -44,27 +44,30 @@ def get_sales(days=90):
     """)
 
 
-def get_inventory():
-    return query("""
-        SELECT i.*, p.name as product_name, p.category, p.brand,
-               p.unit_price, p.unit_cost, p.reorder_point, p.reorder_qty,
-               s.name as store_name, s.city
-        FROM inventory i
-        JOIN products p ON i.product_id = p.product_id
-        JOIN stores s ON i.store_id = s.store_id
-    """)
-
-
 def get_inventory_simple():
-    """Returns inventory with all product and store info"""
+    """Returns inventory with ALL product fields including reorder_point and reorder_qty"""
     return query("""
-        SELECT i.*, p.name as product_name, p.category, p.brand,
-               p.unit_price, p.unit_cost, p.reorder_point, p.reorder_qty, p.shelf_life_days,
-               s.name as store_name, s.city, s.retailer_id
+        SELECT i.*, 
+               p.name as product_name, 
+               p.category, 
+               p.brand,
+               p.unit_price, 
+               p.unit_cost, 
+               p.reorder_point, 
+               p.reorder_qty, 
+               p.shelf_life_days,
+               s.name as store_name, 
+               s.city,
+               s.retailer_id
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
     """)
+
+
+def get_inventory():
+    """Alias for get_inventory_simple for compatibility"""
+    return get_inventory_simple()
 
 
 def get_supplier_credit():
@@ -101,7 +104,15 @@ def get_store_costs():
 
 
 def get_logistics():
-    return query("SELECT * FROM logistics")
+    """Returns logistics data - ensure all columns are present"""
+    df = query("SELECT * FROM logistics")
+    # Add default values for missing columns if needed
+    if not df.empty:
+        if 'delay_days' not in df.columns:
+            df['delay_days'] = 0
+        if 'expected_delivery' not in df.columns:
+            df['expected_delivery'] = df['order_date']
+    return df
 
 
 def get_economic_indicators():
@@ -109,7 +120,7 @@ def get_economic_indicators():
 
 
 def get_national_kpis(days=30):
-    result = query(f"""
+    return query(f"""
         SELECT
             COALESCE(SUM(revenue), 0) as total_revenue,
             COALESCE(SUM(profit), 0) as total_profit,
@@ -119,7 +130,6 @@ def get_national_kpis(days=30):
         FROM sales
         WHERE date >= date('now', '-{days} days')
     """)
-    return result
 
 
 def get_store_revenue_summary(days=30):
@@ -156,82 +166,3 @@ def get_daily_trend(days=60):
         WHERE date >= date('now', '-{days} days')
         GROUP BY date ORDER BY date
     """)
-def get_national_kpis(days=30):
-    sql = f"""
-        SELECT
-            COALESCE(SUM(revenue), 0) as total_revenue,
-            COALESCE(SUM(profit), 0) as total_profit,
-            COALESCE(SUM(units_sold), 0) as total_units,
-            COUNT(DISTINCT store_id) as active_stores,
-            COALESCE(ROUND(SUM(profit)*100.0/NULLIF(SUM(revenue),0), 1), 0) as margin_pct
-        FROM sales
-        WHERE date >= date('now', '-{days} days')
-    """
-    result = query(sql)
-    print(f"[DEBUG] get_national_kpis({days}) - rows: {len(result)}, revenue: {result['total_revenue'].iloc[0] if not result.empty else 0}")
-    return result
-
-
-def get_store_revenue_summary(days=30):
-    sql = f"""
-        SELECT s.store_id, s.name as store_name, s.city, s.lat, s.lng,
-               COALESCE(ROUND(SUM(sa.revenue), 2), 0) as total_revenue,
-               COALESCE(ROUND(SUM(sa.profit), 2), 0) as total_profit,
-               COALESCE(SUM(sa.units_sold), 0) as total_units,
-               COALESCE(ROUND(SUM(sa.profit)*100.0/NULLIF(SUM(sa.revenue),0), 1), 0) as margin_pct
-        FROM stores s
-        LEFT JOIN sales sa ON s.store_id = sa.store_id AND sa.date >= date('now', '-{days} days')
-        GROUP BY s.store_id
-        ORDER BY total_revenue DESC
-    """
-    result = query(sql)
-    print(f"[DEBUG] get_store_revenue_summary({days}) - rows: {len(result)}")
-    return result
-
-
-def get_inventory_simple():
-    sql = """
-        SELECT i.*, p.name as product_name, p.category, p.brand,
-               p.unit_price, p.unit_cost, p.reorder_point, p.reorder_qty, p.shelf_life_days,
-               s.name as store_name, s.city, s.retailer_id
-        FROM inventory i
-        JOIN products p ON i.product_id = p.product_id
-        JOIN stores s ON i.store_id = s.store_id
-    """
-    result = query(sql)
-    print(f"[DEBUG] get_inventory_simple() - rows: {len(result)}")
-    return result
-
-
-def get_supplier_credit():
-    result = query("SELECT * FROM supplier_credit")
-    print(f"[DEBUG] get_supplier_credit() - rows: {len(result)}")
-    return result
-
-
-def get_category_sales(days=30):
-    sql = f"""
-        SELECT p.category,
-               COALESCE(ROUND(SUM(s.revenue), 2), 0) as revenue,
-               COALESCE(SUM(s.units_sold), 0) as units
-        FROM sales s 
-        JOIN products p ON s.product_id = p.product_id
-        WHERE s.date >= date('now', '-{days} days')
-        GROUP BY p.category ORDER BY revenue DESC
-    """
-    result = query(sql)
-    print(f"[DEBUG] get_category_sales({days}) - rows: {len(result)}")
-    return result
-
-
-def get_daily_trend(days=60):
-    sql = f"""
-        SELECT date, COALESCE(ROUND(SUM(revenue), 2), 0) as revenue,
-               COALESCE(ROUND(SUM(profit), 2), 0) as profit
-        FROM sales
-        WHERE date >= date('now', '-{days} days')
-        GROUP BY date ORDER BY date
-    """
-    result = query(sql)
-    print(f"[DEBUG] get_daily_trend({days}) - rows: {len(result)}")
-    return result
