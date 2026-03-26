@@ -84,7 +84,7 @@ def layout():
                                   title={"text": "Outstanding by Supplier & Status", "font": {"color": "#ccc", "size": 13}},
                                   yaxis={"categoryorder": "total ascending"})
 
-        # Aging
+        # Aging - FIXED: Proper layout merging
         if "overdue_days" in df.columns:
             bins = pd.cut(df["overdue_days"], bins=[-1, 0, 14, 30, 60, 999],
                           labels=["Current", "1-14d", "15-30d", "31-60d", "60d+"])
@@ -94,16 +94,23 @@ def layout():
                 x=age_amounts["bucket"].astype(str), y=age_amounts["amount"],
                 marker_color=["#22c55e", "#3b82f6", "#eab308", "#f97316", "#ef4444"]
             ))
+            # Create a copy and update instead of using ** twice
+            aging_layout = CHART_LAYOUT.copy()
+            aging_layout["title"] = {"text": "Accounts Payable Aging", "font": {"color": "#ccc", "size": 13}}
+            fig_aging.update_layout(**aging_layout)
         else:
             fig_aging = go.Figure()
             fig_aging.update_layout(**CHART_LAYOUT, title={"text": "No aging data", "font": {"color": "#ccc"}})
-        fig_aging.update_layout(**CHART_LAYOUT, title={"text": "Accounts Payable Aging", "font": {"color": "#ccc", "size": 13}})
 
         # Outstanding top 10
         top_out = df.groupby("supplier_name")["outstanding_usd"].sum().sort_values(ascending=False).head(10)
         fig_out = go.Figure(go.Bar(x=top_out.values, y=top_out.index, orientation="h", marker_color="#00c853"))
-        fig_out.update_layout(**CHART_LAYOUT, title={"text": "Top 10 Outstanding Balances", "font": {"color": "#ccc", "size": 13}},
-                               yaxis={"categoryorder": "total ascending"})
+        out_layout = CHART_LAYOUT.copy()
+        out_layout.update({
+            "title": {"text": "Top 10 Outstanding Balances", "font": {"color": "#ccc", "size": 13}},
+            "yaxis": {"categoryorder": "total ascending"}
+        })
+        fig_out.update_layout(**out_layout)
 
         # Priority table
         unique_suppliers = df.drop_duplicates("supplier_name").head(15)
@@ -125,7 +132,7 @@ def layout():
                                "padding": "8px 10px"}),
                 html.Td(row.get("last_delivery_date", "N/A"), style={"color": "#888", "padding": "8px 10px", "fontSize": "11px"}),
                 html.Td([
-                    html.Div(f"{score:.2f}", style={"color": score_color, "fontWeight": "700", "fontSize": "13px"}),
+                    html.Div(f"{score:.2f}", style={"color": score_color", "fontWeight": "700", "fontSize": "13px"}),
                     html.Div(style={"width": f"{score * 100:.0f}%", "height": "4px", "background": score_color,
                                     "borderRadius": "2px", "marginTop": "3px", "maxWidth": "80px"})
                 ], style={"padding": "8px 10px"}),
@@ -135,7 +142,7 @@ def layout():
         table = html.Table([html.Thead(header_row), html.Tbody(rows)],
                            style={"width": "100%", "borderCollapse": "collapse"})
 
-        # Recommendations - FIXED: Use proper list building
+        # Recommendations
         recs = []
         stopped = df[df["supplier_status"] == "STOPPED"].drop_duplicates("supplier_name")
         for _, row in stopped.head(3).iterrows():
@@ -155,7 +162,6 @@ def layout():
             ], style={"padding": "10px 14px", "background": "#1a1000", "border": "1px solid #f9731630",
                       "borderRadius": "8px", "marginBottom": "8px", "fontSize": "13px"}))
 
-        # FIXED: Build recommendations list properly
         if recs:
             recommendations_list = recs
         else:
