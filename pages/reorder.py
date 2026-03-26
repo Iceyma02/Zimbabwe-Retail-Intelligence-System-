@@ -30,6 +30,9 @@ def get_reorder_data():
             print(f"Warning: Missing columns in inventory: {missing_cols}")
             return pd.DataFrame()
         
+        # Reset index to avoid alignment issues
+        inv = inv.reset_index(drop=True)
+        
         # Get 30-day sales data
         sales_30 = get_sales(30)
         
@@ -51,8 +54,8 @@ def get_reorder_data():
         df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999)
         df["days_of_stock"] = df["days_of_stock"].fillna(999)
         
-        # Check if reorder is needed
-        df["reorder_needed"] = df["current_stock"] <= df["reorder_point"]
+        # Check if reorder is needed - use .values to avoid alignment issues
+        df["reorder_needed"] = df["current_stock"].values <= df["reorder_point"].values
         needs_reorder = df[df["reorder_needed"]].copy()
         
         if needs_reorder.empty:
@@ -60,8 +63,8 @@ def get_reorder_data():
         
         # Calculate urgency score
         needs_reorder["urgency_score"] = (
-            (1 / (needs_reorder["days_of_stock"] + 0.5)) * 0.6 +
-            (needs_reorder["reorder_point"] / (needs_reorder["current_stock"] + 1)) * 0.4
+            (1 / (needs_reorder["days_of_stock"].values + 0.5)) * 0.6 +
+            (needs_reorder["reorder_point"].values / (needs_reorder["current_stock"].values + 1)) * 0.4
         )
         
         needs_reorder["urgency_score"] = needs_reorder["urgency_score"].replace([float('inf'), -float('inf')], 1.0)
