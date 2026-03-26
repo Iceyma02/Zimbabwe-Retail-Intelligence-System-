@@ -12,6 +12,18 @@ from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
 dash.register_page(__name__, path="/reorder", name="Reorder Optimizer", order=7)
 
+def flatten_column(series):
+    """Flatten a column that might contain arrays/lists"""
+    result = []
+    for val in series:
+        if isinstance(val, (list, tuple, np.ndarray)):
+            result.append(float(val[0]) if len(val) > 0 else 0)
+        else:
+            try:
+                result.append(float(val) if val is not None else 0)
+            except:
+                result.append(0)
+    return result
 
 def get_reorder_data():
     """Get products that need reordering with urgency scores"""
@@ -22,47 +34,26 @@ def get_reorder_data():
             print("Warning: No inventory data found")
             return pd.DataFrame()
         
-        # Check if required columns exist
-        required_cols = ["product_id", "product_name", "store_name", "current_stock", 
-                         "reorder_point", "reorder_qty", "unit_cost"]
-        missing_cols = [col for col in required_cols if col not in inv.columns]
-        if missing_cols:
-            print(f"Warning: Missing columns in inventory: {missing_cols}")
-            return pd.DataFrame()
-        
         # Reset index to avoid alignment issues
         inv = inv.reset_index(drop=True)
         
-        # Convert columns to numeric, handling nested structures
-        def safe_numeric(series):
-            """Safely convert series to numeric, handling nested values"""
-            try:
-                # If series contains lists/arrays, extract first element
-                if series.dtype == 'object':
-                    # Check if first element is a list/array
-                    if len(series) > 0 and isinstance(series.iloc[0], (list, tuple, np.ndarray)):
-                        return pd.to_numeric(series.apply(lambda x: x[0] if len(x) > 0 else 0), errors='coerce')
-                return pd.to_numeric(series, errors='coerce')
-            except:
-                return pd.Series([0] * len(series), index=series.index)
-        
-        # Apply safe conversion
-        inv["current_stock"] = safe_numeric(inv["current_stock"])
-        inv["reorder_point"] = safe_numeric(inv["reorder_point"])
-        inv["reorder_qty"] = safe_numeric(inv["reorder_qty"])
-        inv["unit_cost"] = safe_numeric(inv["unit_cost"])
-        
-        # Fill NaN values
-        inv["current_stock"] = inv["current_stock"].fillna(0)
-        inv["reorder_point"] = inv["reorder_point"].fillna(0)
-        inv["reorder_qty"] = inv["reorder_qty"].fillna(0)
-        inv["unit_cost"] = inv["unit_cost"].fillna(0)
+        # Flatten all numeric columns
+        numeric_cols = ["current_stock", "reorder_point", "reorder_qty", "unit_cost"]
+        for col in numeric_cols:
+            if col in inv.columns:
+                inv[col] = flatten_column(inv[col])
+            else:
+                inv[col] = 0
         
         # Get 30-day sales data
         sales_30 = get_sales(30)
         
         # Calculate average daily sales per product
         if not sales_30.empty:
+            # Flatten product_id if needed
+            if "product_id" in sales_30.columns:
+                sales_30["product_id"] = flatten_column(sales_30["product_id"])
+            
             avg_daily = sales_30.groupby("product_id")["units_sold"].mean().reset_index()
             avg_daily.columns = ["product_id", "avg_daily_sales"]
             df = inv.merge(avg_daily, on="product_id", how="left")
