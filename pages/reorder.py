@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from data.db import *
 from components.shared import *
 
-dash.register_page(__name__, path="/reports", name="Executive Reports", order=16)
+dash.register_page(__name__, path="/reorder", name="Reorder Optimizer", order=7)
 
 def layout():
     return html.Div([
