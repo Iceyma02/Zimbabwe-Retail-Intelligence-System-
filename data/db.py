@@ -7,6 +7,9 @@ import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "zimretail_iq.db")
 
+print(f"[DEBUG] Database path: {DB_PATH}")
+print(f"[DEBUG] Database exists: {os.path.exists(DB_PATH)}")
+
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
@@ -104,14 +107,16 @@ def get_store_costs():
 
 
 def get_logistics():
-    """Returns logistics data - ensure all columns are present"""
+    """Returns logistics data with safe defaults"""
     df = query("SELECT * FROM logistics")
     # Add default values for missing columns if needed
     if not df.empty:
         if 'delay_days' not in df.columns:
             df['delay_days'] = 0
         if 'expected_delivery' not in df.columns:
-            df['expected_delivery'] = df['order_date']
+            df['expected_delivery'] = df.get('order_date', 'N/A')
+        if 'order_id' not in df.columns:
+            df['order_id'] = [f"ORD-{i+1:04d}" for i in range(len(df))]
     return df
 
 
