@@ -1,14 +1,28 @@
 """Supplier Credit & Risk — Page 10"""
 import dash
-from dash import html, dcc
+from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data.db import *
-from components.shared import *
+import sys
+import os
 
-dash.register_page(__name__, path="/supplier-credit", name="Supplier Credit", order=9)
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import from data.db
+from data.db import (
+    get_stores, get_products, get_sales, get_inventory_simple,
+    get_supplier_credit, get_staff, get_shrinkage, get_promotions,
+    get_competitor_prices, get_store_costs, get_logistics,
+    get_economic_indicators, get_national_kpis, get_store_revenue_summary,
+    get_category_sales, get_daily_trend
+)
+
+# Import from components
+from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
+
+dash.register_page(__name__, path="/page-path", name="Page Name", order=0)
 
 def compute_priority_score(row):
     status_score = {"STOPPED": 1.0, "LIMITED_CREDIT": 0.6, "ACTIVE": 0.1}.get(row["supplier_status"], 0.2)
