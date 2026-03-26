@@ -22,7 +22,7 @@ from data.db import (
 # Import from components
 from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
-dash.register_page(__name__, path="/page-path", name="Page Name", order=0)
+dash.register_page(__name__, path="/supplier-credit", name="Supplier Credit", order=9)
 
 def compute_priority_score(row):
     status_score = {"STOPPED": 1.0, "LIMITED_CREDIT": 0.6, "ACTIVE": 0.1}.get(row["supplier_status"], 0.2)
