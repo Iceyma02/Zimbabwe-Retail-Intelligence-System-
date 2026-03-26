@@ -22,7 +22,7 @@ from data.db import (
 # Import from components
 from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
-dash.register_page(__name__, path="/page-path", name="Page Name", order=0)
+dash.register_page(__name__, path="/shrinkage", name="Shrinkage & Loss", order=14)
 
 def layout():
     df = get_shrinkage()
