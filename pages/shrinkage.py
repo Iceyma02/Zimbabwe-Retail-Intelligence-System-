@@ -12,6 +12,12 @@ from components.shared import *
 
 dash.register_page(__name__, path="/shrinkage", name="Shrinkage & Loss", order=14)
 
+def safe_extract_store_name(value):
+    """Safely extract store name from various data types"""
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return str(value[0]) if len(value) > 0 else "Unknown"
+    return str(value) if value is not None else "Unknown"
+
 def layout():
     try:
         df = get_shrinkage()
@@ -33,35 +39,47 @@ def layout():
         # Reset index completely
         df_shrink = df_shrink.reset_index(drop=True)
         
-        # Ensure store_name is a simple string column
+        # Ensure store_name is a simple string column - handle nested data
         if "store_name" in df_shrink.columns:
-            # Convert to string and handle any list/array values
-            df_shrink["store_name"] = df_shrink["store_name"].apply(
-                lambda x: str(x) if not isinstance(x, (list, np.ndarray)) else str(x[0]) if len(x) > 0 else "Unknown"
-            )
+            # Apply safe extraction to handle any list/array values
+            df_shrink["store_name"] = df_shrink["store_name"].apply(safe_extract_store_name)
             df_shrink["store_name"] = df_shrink["store_name"].fillna("Unknown").astype(str)
         else:
             df_shrink["store_name"] = "Unknown"
         
         # Ensure month is string
         if "month" in df_shrink.columns:
-            df_shrink["month"] = df_shrink["month"].astype(str)
+            # Extract month safely if it's a list
+            if df_shrink["month"].dtype == 'object' and len(df_shrink) > 0:
+                df_shrink["month"] = df_shrink["month"].apply(
+                    lambda x: str(x[0]) if isinstance(x, (list, tuple, np.ndarray)) else str(x)
+                )
+            df_shrink["month"] = df_shrink["month"].fillna("Unknown").astype(str)
         else:
             df_shrink["month"] = "Unknown"
         
         # Ensure cause is string
         if "cause" in df_shrink.columns:
-            df_shrink["cause"] = df_shrink["cause"].astype(str)
+            if df_shrink["cause"].dtype == 'object' and len(df_shrink) > 0:
+                df_shrink["cause"] = df_shrink["cause"].apply(
+                    lambda x: str(x[0]) if isinstance(x, (list, tuple, np.ndarray)) else str(x)
+                )
+            df_shrink["cause"] = df_shrink["cause"].fillna("Unknown").astype(str)
         
         # Calculate totals
         total_loss = df_shrink["value_usd"].sum()
         
-        # Group by month - safe grouping
-        monthly_totals = df_shrink.groupby("month", observed=True)["value_usd"].sum() if "month" in df_shrink.columns else pd.Series()
-        avg_monthly = monthly_totals.mean() if not monthly_totals.empty else 0
-        
-        # Group by store_name - safe grouping
+        # Group by month - safe grouping using observed=True
         try:
+            monthly_totals = df_shrink.groupby("month", observed=True)["value_usd"].sum()
+            avg_monthly = monthly_totals.mean() if not monthly_totals.empty else 0
+        except Exception as e:
+            print(f"Error grouping by month: {e}")
+            avg_monthly = 0
+        
+        # Group by store_name - safe grouping using observed=True
+        try:
+            # Use the string column directly
             store_loss = df_shrink.groupby(df_shrink["store_name"], observed=True)["value_usd"].sum()
             if not store_loss.empty:
                 worst_store = store_loss.idxmax()
@@ -73,7 +91,10 @@ def layout():
             worst_store = "N/A"
         
         # Calculate theft losses
-        theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum() if "cause" in df_shrink.columns else 0
+        if "cause" in df_shrink.columns:
+            theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum()
+        else:
+            theft = 0
 
         kpis = [
             kpi_card("Total Losses (6mo)", f"${total_loss:,.0f}", None, None, "fa-circle-minus", "#ef4444"),
@@ -84,26 +105,34 @@ def layout():
 
         # Cause chart
         if "cause" in df_shrink.columns:
-            cause_totals = df_shrink.groupby("cause", observed=True)["value_usd"].sum().sort_values(ascending=False).reset_index()
-            if not cause_totals.empty:
-                colors = ["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"]
-                fig_cause = go.Figure(go.Bar(
-                    x=cause_totals["cause"], y=cause_totals["value_usd"],
-                    marker_color=colors[:len(cause_totals)]
-                ))
-                fig_cause.update_layout(**CHART_LAYOUT,
-                                         title={"text": "Loss by Cause", "font": {"color": "#ccc", "size": 13}})
-            else:
+            try:
+                cause_totals = df_shrink.groupby("cause", observed=True)["value_usd"].sum().sort_values(ascending=False).reset_index()
+                if not cause_totals.empty:
+                    colors = ["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"]
+                    fig_cause = go.Figure(go.Bar(
+                        x=cause_totals["cause"], y=cause_totals["value_usd"],
+                        marker_color=colors[:len(cause_totals)]
+                    ))
+                    fig_cause.update_layout(**CHART_LAYOUT,
+                                             title={"text": "Loss by Cause", "font": {"color": "#ccc", "size": 13}})
+                else:
+                    fig_cause = go.Figure()
+                    fig_cause.update_layout(**CHART_LAYOUT, title={"text": "No cause data"})
+            except Exception as e:
+                print(f"Error creating cause chart: {e}")
                 fig_cause = go.Figure()
-                fig_cause.update_layout(**CHART_LAYOUT, title={"text": "No cause data"})
+                fig_cause.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
         else:
             fig_cause = go.Figure()
             fig_cause.update_layout(**CHART_LAYOUT, title={"text": "No cause column"})
 
         # Store chart - using safe grouping
         try:
-            store_totals_df = df_shrink.groupby(df_shrink["store_name"], observed=True)["value_usd"].sum().sort_values(ascending=False).reset_index()
+            # Use the string column directly for grouping
+            store_totals = df_shrink.groupby(df_shrink["store_name"], observed=True)["value_usd"].sum().sort_values(ascending=False)
+            store_totals_df = store_totals.reset_index()
             store_totals_df.columns = ["store_name", "value_usd"]
+            
             if not store_totals_df.empty:
                 fig_store = go.Figure(go.Bar(
                     x=store_totals_df["value_usd"], y=store_totals_df["store_name"], orientation="h",
@@ -126,15 +155,20 @@ def layout():
 
         # Trend chart
         if "month" in df_shrink.columns and "cause" in df_shrink.columns:
-            monthly = df_shrink.groupby(["month", "cause"], observed=True)["value_usd"].sum().reset_index()
-            if not monthly.empty:
-                fig_trend = px.bar(monthly, x="month", y="value_usd", color="cause", barmode="stack")
-                fig_trend.update_layout(**CHART_LAYOUT,
-                                         title={"text": "Monthly Loss Trend by Cause", "font": {"color": "#ccc", "size": 13}})
-                fig_trend.update_xaxes(tickangle=-30)
-            else:
+            try:
+                monthly = df_shrink.groupby(["month", "cause"], observed=True)["value_usd"].sum().reset_index()
+                if not monthly.empty:
+                    fig_trend = px.bar(monthly, x="month", y="value_usd", color="cause", barmode="stack")
+                    fig_trend.update_layout(**CHART_LAYOUT,
+                                             title={"text": "Monthly Loss Trend by Cause", "font": {"color": "#ccc", "size": 13}})
+                    fig_trend.update_xaxes(tickangle=-30)
+                else:
+                    fig_trend = go.Figure()
+                    fig_trend.update_layout(**CHART_LAYOUT, title={"text": "No trend data"})
+            except Exception as e:
+                print(f"Error creating trend chart: {e}")
                 fig_trend = go.Figure()
-                fig_trend.update_layout(**CHART_LAYOUT, title={"text": "No trend data"})
+                fig_trend.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
         else:
             fig_trend = go.Figure()
             fig_trend.update_layout(**CHART_LAYOUT, title={"text": "Missing month or cause columns"})
