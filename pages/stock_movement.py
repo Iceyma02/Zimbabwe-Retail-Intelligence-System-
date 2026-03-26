@@ -1,5 +1,4 @@
 """Stock Movement Intelligence — Page 6"""
-"""Page Name"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
