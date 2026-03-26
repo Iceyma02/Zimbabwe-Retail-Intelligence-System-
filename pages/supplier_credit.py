@@ -84,7 +84,7 @@ def layout():
                                   title={"text": "Outstanding by Supplier & Status", "font": {"color": "#ccc", "size": 13}},
                                   yaxis={"categoryorder": "total ascending"})
 
-        # Aging - FIXED: Proper layout merging
+        # Aging - Fixed layout merging
         if "overdue_days" in df.columns:
             bins = pd.cut(df["overdue_days"], bins=[-1, 0, 14, 30, 60, 999],
                           labels=["Current", "1-14d", "15-30d", "31-60d", "60d+"])
@@ -94,7 +94,6 @@ def layout():
                 x=age_amounts["bucket"].astype(str), y=age_amounts["amount"],
                 marker_color=["#22c55e", "#3b82f6", "#eab308", "#f97316", "#ef4444"]
             ))
-            # Create a copy and update instead of using ** twice
             aging_layout = CHART_LAYOUT.copy()
             aging_layout["title"] = {"text": "Accounts Payable Aging", "font": {"color": "#ccc", "size": 13}}
             fig_aging.update_layout(**aging_layout)
@@ -132,7 +131,7 @@ def layout():
                                "padding": "8px 10px"}),
                 html.Td(row.get("last_delivery_date", "N/A"), style={"color": "#888", "padding": "8px 10px", "fontSize": "11px"}),
                 html.Td([
-                    html.Div(f"{score:.2f}", style={"color": score_color", "fontWeight": "700", "fontSize": "13px"}),
+                    html.Div(f"{score:.2f}", style={"color": score_color, "fontWeight": "700", "fontSize": "13px"}),
                     html.Div(style={"width": f"{score * 100:.0f}%", "height": "4px", "background": score_color,
                                     "borderRadius": "2px", "marginTop": "3px", "maxWidth": "80px"})
                 ], style={"padding": "8px 10px"}),
