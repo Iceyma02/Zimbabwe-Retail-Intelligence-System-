@@ -135,7 +135,7 @@ def layout():
         table = html.Table([html.Thead(header_row), html.Tbody(rows)],
                            style={"width": "100%", "borderCollapse": "collapse"})
 
-        # Recommendations
+        # Recommendations - FIXED: Use proper list building
         recs = []
         stopped = df[df["supplier_status"] == "STOPPED"].drop_duplicates("supplier_name")
         for _, row in stopped.head(3).iterrows():
@@ -154,6 +154,12 @@ def layout():
                           style={"color": "#ddd"}),
             ], style={"padding": "10px 14px", "background": "#1a1000", "border": "1px solid #f9731630",
                       "borderRadius": "8px", "marginBottom": "8px", "fontSize": "13px"}))
+
+        # FIXED: Build recommendations list properly
+        if recs:
+            recommendations_list = recs
+        else:
+            recommendations_list = [html.Div("No urgent recommendations", style={"color": "#888"})]
 
         return html.Div([
             page_header("Supplier Credit & Risk", "Accounts payable cross-referenced with stock urgency — who to pay first", "fa-file-invoice-dollar"),
@@ -180,7 +186,7 @@ def layout():
                 html.Div([
                     html.Div("💡 AI Recommendations", style={"color": "#888", "fontSize": "11px",
                                                               "textTransform": "uppercase", "letterSpacing": "1px", "marginBottom": "14px"}),
-                    *recs if recs else [html.Div("No urgent recommendations", style={"color": "#888"})]
+                    html.Div(recommendations_list)
                 ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
             ], style={"padding": "20px 28px"})
         ])
