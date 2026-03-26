@@ -14,8 +14,10 @@ def get_conn():
 
 def query(sql, params=None):
     conn = get_conn()
-    df = pd.read_sql_query(sql, conn, params=params)
-    conn.close()
+    try:
+        df = pd.read_sql_query(sql, conn, params=params)
+    finally:
+        conn.close()
     return df
 
 
@@ -45,24 +47,20 @@ def get_sales(days=90):
 def get_inventory():
     return query("""
         SELECT i.*, p.name as product_name, p.category, p.brand,
-               p.unit_price, p.unit_cost, s.name as store_name, s.city,
-               sup.name as supplier_name, sup.supplier_id
+               p.unit_price, p.unit_cost, p.reorder_point, p.reorder_qty,
+               s.name as store_name, s.city
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
-        LEFT JOIN (
-            SELECT sp.supplier_id, sp.name,
-                   json_each.value as product_id_raw
-            FROM suppliers sp
-        ) sup ON 1=0
     """)
 
 
 def get_inventory_simple():
+    """Returns inventory with all product and store info"""
     return query("""
         SELECT i.*, p.name as product_name, p.category, p.brand,
-               p.unit_price, p.unit_cost, p.shelf_life_days,
-               s.name as store_name, s.city
+               p.unit_price, p.unit_cost, p.reorder_point, p.reorder_qty, p.shelf_life_days,
+               s.name as store_name, s.city, s.retailer_id
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
@@ -111,28 +109,28 @@ def get_economic_indicators():
 
 
 def get_national_kpis(days=30):
-    return query(f"""
+    result = query(f"""
         SELECT
-            SUM(revenue) as total_revenue,
-            SUM(profit) as total_profit,
-            SUM(units_sold) as total_units,
+            COALESCE(SUM(revenue), 0) as total_revenue,
+            COALESCE(SUM(profit), 0) as total_profit,
+            COALESCE(SUM(units_sold), 0) as total_units,
             COUNT(DISTINCT store_id) as active_stores,
-            ROUND(SUM(profit)*100.0/NULLIF(SUM(revenue),0), 1) as margin_pct
+            COALESCE(ROUND(SUM(profit)*100.0/NULLIF(SUM(revenue),0), 1), 0) as margin_pct
         FROM sales
         WHERE date >= date('now', '-{days} days')
     """)
+    return result
 
 
 def get_store_revenue_summary(days=30):
     return query(f"""
         SELECT s.store_id, s.name as store_name, s.city, s.lat, s.lng,
-               ROUND(SUM(sa.revenue), 2) as total_revenue,
-               ROUND(SUM(sa.profit), 2) as total_profit,
-               SUM(sa.units_sold) as total_units,
-               ROUND(SUM(sa.profit)*100.0/NULLIF(SUM(sa.revenue),0), 1) as margin_pct
+               COALESCE(ROUND(SUM(sa.revenue), 2), 0) as total_revenue,
+               COALESCE(ROUND(SUM(sa.profit), 2), 0) as total_profit,
+               COALESCE(SUM(sa.units_sold), 0) as total_units,
+               COALESCE(ROUND(SUM(sa.profit)*100.0/NULLIF(SUM(sa.revenue),0), 1), 0) as margin_pct
         FROM stores s
-        JOIN sales sa ON s.store_id = sa.store_id
-        WHERE sa.date >= date('now', '-{days} days')
+        LEFT JOIN sales sa ON s.store_id = sa.store_id AND sa.date >= date('now', '-{days} days')
         GROUP BY s.store_id
         ORDER BY total_revenue DESC
     """)
@@ -141,9 +139,10 @@ def get_store_revenue_summary(days=30):
 def get_category_sales(days=30):
     return query(f"""
         SELECT p.category,
-               ROUND(SUM(s.revenue), 2) as revenue,
-               SUM(s.units_sold) as units
-        FROM sales s JOIN products p ON s.product_id = p.product_id
+               COALESCE(ROUND(SUM(s.revenue), 2), 0) as revenue,
+               COALESCE(SUM(s.units_sold), 0) as units
+        FROM sales s 
+        JOIN products p ON s.product_id = p.product_id
         WHERE s.date >= date('now', '-{days} days')
         GROUP BY p.category ORDER BY revenue DESC
     """)
@@ -151,8 +150,8 @@ def get_category_sales(days=30):
 
 def get_daily_trend(days=60):
     return query(f"""
-        SELECT date, ROUND(SUM(revenue), 2) as revenue,
-               ROUND(SUM(profit), 2) as profit
+        SELECT date, COALESCE(ROUND(SUM(revenue), 2), 0) as revenue,
+               COALESCE(ROUND(SUM(profit), 2), 0) as profit
         FROM sales
         WHERE date >= date('now', '-{days} days')
         GROUP BY date ORDER BY date
