@@ -22,8 +22,7 @@ from data.db import (
 # Import from components
 from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
-dash.register_page(__name__, path="/page-path", name="Page Name", order=0)
-
+dash.register_page(__name__, path="/pnl", name="Store P&L", order=3)
 def layout():
     stores = get_stores()
     store_options = [{"label": "All Stores", "value": "ALL"}] + [
