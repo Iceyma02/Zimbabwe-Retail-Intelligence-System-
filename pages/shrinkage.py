@@ -4,7 +4,6 @@ from dash import html, dcc
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
-import numpy as np
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.db import *
@@ -12,136 +11,69 @@ from components.shared import *
 
 dash.register_page(__name__, path="/shrinkage", name="Shrinkage & Loss", order=14)
 
-def extract_string(value):
-    """Extract string from any nested structure"""
-    if value is None:
-        return "Unknown"
-    if isinstance(value, (list, tuple, np.ndarray)):
-        if len(value) > 0:
-            return str(value[0])
-        return "Unknown"
-    if hasattr(value, 'iloc'):  # Handle Series
-        try:
-            return str(value.iloc[0])
-        except:
-            return str(value)
-    return str(value)
-
-def flatten_series(series):
-    """Flatten a Series that might contain nested structures"""
-    result = []
-    for val in series:
-        result.append(extract_string(val))
-    return result
-
 def layout():
     try:
         df = get_shrinkage()
-        
-        if df.empty:
-            return html.Div([
-                page_header("Shrinkage & Loss",
-                            "Theft, damage, expiry and admin errors — where inventory value disappears",
-                            "fa-triangle-exclamation"),
-                html.Div([
-                    html.Div("No shrinkage data available", 
-                            style={"textAlign": "center", "padding": "60px", "color": "#888"})
-                ], style={"padding": "20px 28px"})
-            ])
-        
-        # Make a copy
-        df_shrink = df.copy()
-        
-        # Convert all columns to strings to avoid nested issues
-        df_shrink = df_shrink.applymap(lambda x: extract_string(x) if not isinstance(x, (int, float)) else x)
-        
-        # Ensure value_usd is numeric
-        df_shrink["value_usd"] = pd.to_numeric(df_shrink["value_usd"], errors='coerce').fillna(0)
-        
-        # Ensure store_name exists and is string
-        if "store_name" in df_shrink.columns:
-            df_shrink["store_name"] = df_shrink["store_name"].astype(str)
+
+        # Ensure store_name is a flat string column (join may produce multi-index)
+        df = df.reset_index(drop=True)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ['_'.join(col).strip() for col in df.columns]
+
+        # Flatten any list/array values in store_name
+        if "store_name" in df.columns:
+            df["store_name"] = df["store_name"].astype(str)
         else:
-            df_shrink["store_name"] = "Unknown"
-        
-        # Ensure month exists
-        if "month" in df_shrink.columns:
-            df_shrink["month"] = df_shrink["month"].astype(str)
-        else:
-            df_shrink["month"] = "Unknown"
-        
-        # Ensure cause exists
-        if "cause" in df_shrink.columns:
-            df_shrink["cause"] = df_shrink["cause"].astype(str)
-        else:
-            df_shrink["cause"] = "Unknown"
-        
-        # Calculate totals
-        total_loss = df_shrink["value_usd"].sum()
-        
-        # Group by month
-        monthly_totals = df_shrink.groupby("month", as_index=False)["value_usd"].sum()
-        avg_monthly = monthly_totals["value_usd"].mean() if not monthly_totals.empty else 0
-        
-        # Group by store_name - use as_index=False to avoid index issues
-        store_loss_df = df_shrink.groupby("store_name", as_index=False)["value_usd"].sum()
-        if not store_loss_df.empty:
-            worst_store = store_loss_df.loc[store_loss_df["value_usd"].idxmax(), "store_name"]
-        else:
-            worst_store = "N/A"
-        
-        # Calculate theft losses
-        theft = df_shrink[df_shrink["cause"] == "Theft"]["value_usd"].sum() if "cause" in df_shrink.columns else 0
+            # fallback — use store_id if store_name missing
+            df["store_name"] = df.get("store_id", "Unknown").astype(str)
+
+        total_loss = float(df["value_usd"].sum())
+        monthly_totals = df.groupby("month", as_index=False)["value_usd"].sum()
+        avg_monthly = float(monthly_totals["value_usd"].mean()) if len(monthly_totals) > 0 else 0
+
+        store_totals = df.groupby("store_name", as_index=False)["value_usd"].sum()
+        worst_store = store_totals.loc[store_totals["value_usd"].idxmax(), "store_name"] if len(store_totals) > 0 else "N/A"
+        worst_store = str(worst_store)[:15]
+
+        theft_mask = df["cause"].str.strip() == "Theft"
+        theft = float(df.loc[theft_mask, "value_usd"].sum())
 
         kpis = [
             kpi_card("Total Losses (6mo)", f"${total_loss:,.0f}", None, None, "fa-circle-minus", "#ef4444"),
             kpi_card("Avg Monthly Loss", f"${avg_monthly:,.0f}", None, None, "fa-calendar", "#f97316"),
             kpi_card("Theft Losses", f"${theft:,.0f}", None, None, "fa-user-secret", "#8b5cf6"),
-            kpi_card("Highest Loss Store", f"{worst_store[:15] if worst_store else 'N/A'}", None, None, "fa-store", "#eab308"),
+            kpi_card("Highest Loss Store", worst_store, None, None, "fa-store", "#eab308"),
         ]
 
-        # Cause chart
-        cause_totals = df_shrink.groupby("cause", as_index=False)["value_usd"].sum().sort_values("value_usd", ascending=False)
-        if not cause_totals.empty:
-            colors = ["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"]
-            fig_cause = go.Figure(go.Bar(
-                x=cause_totals["cause"], y=cause_totals["value_usd"],
-                marker_color=colors[:len(cause_totals)]
-            ))
-            fig_cause.update_layout(**CHART_LAYOUT,
-                                     title={"text": "Loss by Cause", "font": {"color": "#ccc", "size": 13}})
-        else:
-            fig_cause = go.Figure()
-            fig_cause.update_layout(**CHART_LAYOUT, title={"text": "No cause data"})
+        # Loss by cause
+        cause_totals = df.groupby("cause", as_index=False)["value_usd"].sum().sort_values("value_usd", ascending=False)
+        fig_cause = go.Figure(go.Bar(
+            x=cause_totals["cause"].astype(str),
+            y=cause_totals["value_usd"],
+            marker_color=["#ef4444", "#f97316", "#eab308", "#8b5cf6", "#3b82f6"][:len(cause_totals)]
+        ))
+        fig_cause.update_layout(**CHART_LAYOUT,
+                                 title={"text": "Loss by Cause", "font": {"color": "#ccc", "size": 13}})
 
-        # Store chart
-        store_totals_df = df_shrink.groupby("store_name", as_index=False)["value_usd"].sum().sort_values("value_usd", ascending=False)
-        if not store_totals_df.empty:
-            fig_store = go.Figure(go.Bar(
-                x=store_totals_df["value_usd"], y=store_totals_df["store_name"], orientation="h",
-                marker_color=["#ef4444" if i == 0 else "#f97316" if i < 3 else "#3b82f6"
-                              for i in range(len(store_totals_df))]
-            ))
-            store_layout = CHART_LAYOUT.copy()
-            store_layout.update({
-                "title": {"text": "Loss by Store", "font": {"color": "#ccc", "size": 13}},
-                "yaxis": {"categoryorder": "total ascending"}
-            })
-            fig_store.update_layout(**store_layout)
-        else:
-            fig_store = go.Figure()
-            fig_store.update_layout(**CHART_LAYOUT, title={"text": "No store data"})
+        # Loss by store
+        store_plot = store_totals.sort_values("value_usd", ascending=True)
+        n = len(store_plot)
+        fig_store = go.Figure(go.Bar(
+            x=store_plot["value_usd"],
+            y=store_plot["store_name"].astype(str),
+            orientation="h",
+            marker_color=["#ef4444" if i == n-1 else "#f97316" if i >= n-3 else "#3b82f6"
+                          for i in range(n)]
+        ))
+        fig_store.update_layout(**CHART_LAYOUT,
+                                 title={"text": "Loss by Store", "font": {"color": "#ccc", "size": 13}})
 
-        # Trend chart
-        monthly = df_shrink.groupby(["month", "cause"], as_index=False)["value_usd"].sum()
-        if not monthly.empty:
-            fig_trend = px.bar(monthly, x="month", y="value_usd", color="cause", barmode="stack")
-            fig_trend.update_layout(**CHART_LAYOUT,
-                                     title={"text": "Monthly Loss Trend by Cause", "font": {"color": "#ccc", "size": 13}})
-            fig_trend.update_xaxes(tickangle=-30)
-        else:
-            fig_trend = go.Figure()
-            fig_trend.update_layout(**CHART_LAYOUT, title={"text": "No trend data"})
+        # Monthly trend by cause
+        monthly_cause = df.groupby(["month", "cause"], as_index=False)["value_usd"].sum()
+        fig_trend = px.bar(monthly_cause, x="month", y="value_usd", color="cause", barmode="stack")
+        fig_trend.update_layout(**CHART_LAYOUT,
+                                 title={"text": "Monthly Loss Trend by Cause", "font": {"color": "#ccc", "size": 13}})
+        fig_trend.update_xaxes(tickangle=-30)
 
         return html.Div([
             page_header("Shrinkage & Loss",
@@ -149,7 +81,7 @@ def layout():
                         "fa-triangle-exclamation"),
             html.Div([
                 html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
+                         style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
                 html.Div([
                     html.Div([dcc.Graph(figure=fig_cause, config={"displayModeBar": False}, style={"height": "280px"})],
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
@@ -157,26 +89,16 @@ def layout():
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
                     html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False}, style={"height": "280px"})],
                              style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "flexWrap": "wrap"}),
+                ], style={"display": "flex", "gap": "14px"}),
             ], style={"padding": "20px 28px"})
         ])
-        
+
     except Exception as e:
-        print(f"Error in shrinkage layout: {e}")
         import traceback
-        traceback.print_exc()
         return html.Div([
-            page_header("Shrinkage & Loss",
-                        "Theft, damage, expiry and admin errors — where inventory value disappears",
-                        "fa-triangle-exclamation"),
+            page_header("Shrinkage & Loss", "Error loading data", "fa-triangle-exclamation"),
             html.Div([
-                html.Div([
-                    html.Div("⚠️ Error Loading Data", style={
-                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
-                    }),
-                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database contains shrinkage data.",
-                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
-                ], style={"textAlign": "center", "padding": "60px"})
-            ], style={"padding": "20px 28px"})
+                html.Div(f"⚠️ Error: {str(e)}", style={"color": "#ef4444", "padding": "20px"}),
+                html.Pre(traceback.format_exc(), style={"color": "#888", "fontSize": "11px", "padding": "20px"})
+            ])
         ])
