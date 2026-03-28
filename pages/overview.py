@@ -58,10 +58,11 @@ def layout():
     Output("store-ranking-list", "children"),
     Output("store-ranking-header", "children"),
     Output("active-alerts", "children"),
-    Input("overview-refresh", "n_intervals"),
-    Input("active-retailer", "data")
+    Input("active-retailer", "data"),  # Add retailer as input
+    Input("overview-refresh", "n_intervals")  # Keep interval for auto-refresh
 )
-def update_overview(_, retailer):
+def update_overview(retailer, _):
+    """Update all overview components when retailer changes or interval triggers"""
     try:
         # Get KPIs
         kpis = get_national_kpis(30, retailer)
@@ -143,7 +144,13 @@ def update_overview(_, retailer):
                 ], style={"display": "flex", "alignItems": "center", "gap": "10px",
                           "padding": "8px 0", "borderBottom": "1px solid #1e1e1e"}))
         
-        retailer_name = retailer if retailer != "ALL" else "All Retailers"
+        retailer_name = "All Retailers" if retailer == "ALL" else next((r["label"] for r in [
+            {"label": "TM Pick n Pay", "value": "PNP"},
+            {"label": "OK Zimbabwe", "value": "OK"},
+            {"label": "Spar Zimbabwe", "value": "SPAR"},
+            {"label": "SaiMart", "value": "SAIMART"},
+            {"label": "Choppies Zimbabwe", "value": "CHOPPIES"},
+        ] if r["value"] == retailer), retailer)
         ranking_header = f"Store Revenue Ranking — Last 30 Days ({retailer_name})"
         
         # Alerts
