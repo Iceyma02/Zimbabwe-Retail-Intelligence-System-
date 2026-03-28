@@ -1,8 +1,25 @@
+
 # 🛒 ZimRetail IQ — Retail Intelligence Platform
 
 > A full-stack retail analytics dashboard built for ZimRetail IQ.  
 > 17 modules covering inventory, supply chain, financials, workforce, ML forecasting and more.  
 > **Stack:** Python · Plotly Dash · SQLite · Pandas · Scikit-learn · Railway
+
+---
+
+## 📋 License & Usage
+
+**Copyright © 2026 Anesu Manjengwa. All Rights Reserved.**
+
+This software and its source code are made available for **viewing purposes only**. You may view, fork, and study the code for personal and educational purposes.
+
+**You may NOT:**
+- Use this software for any commercial purpose
+- Modify and distribute modified versions
+- Incorporate this code into other projects
+- Deploy this software for production use
+
+For licensing inquiries or permission requests, contact: **manjengwap10@gmail.com**
 
 ---
 
@@ -18,7 +35,7 @@ All data is **simulated** for demonstration purposes. Logos and brand names used
 
 | # | Module | Description |
 |---|--------|-------------|
-| 1 | **National Overview** | CEO pulse — KPIs, alerts, revenue trends across all 9 stores |
+| 1 | **National Overview** | CEO pulse — KPIs, alerts, revenue trends across all stores |
 | 2 | **Map View** | Interactive Zimbabwe map with store pins color-coded by revenue |
 | 3 | **Store Performance** | Revenue, profit, margin rankings and trend analysis |
 | 4 | **Store P&L Engine** | Full profit & loss per store — revenue minus every cost layer |
@@ -66,7 +83,7 @@ pip install -r requirements.txt
 ```bash
 python data/generate_data.py
 ```
-This creates `data/zimretail_iq.db` with ~500,000 rows of realistic retail data.
+This creates `data/zimretail_iq.db` with ~130,000 rows of realistic retail data across 5 retailers, 12 stores, and 20 products.
 
 ### 5. Run the app
 ```bash
@@ -155,18 +172,36 @@ zimretail-iq/
 
 ## 🇿🇼 Zimbabwe-Specific Features
 
-- **9 real ZimRetail IQ store locations** with accurate coordinates
-- **Local product catalogue** — Dendairy, Olivine, National Foods, Lobels, Colcom, Tanganda, Mazoe etc.
-- **Zimbabwe Economic Layer** — USD/ZiG exchange rate, inflation, fuel, load shedding
+- **12 real store locations** across Zimbabwe with accurate coordinates (Harare, Bulawayo, Mutare, Gweru, Masvingo, Victoria Falls)
+- **Local product catalogue** — Dendairy, Olivine, National Foods, Lobels, Colcom, Tanganda, Mazoe, and more
+- **Zimbabwe Economic Layer** — USD/ZiG exchange rate, inflation, fuel prices, load shedding
 - **Seasonal calendar** — Independence Day, Heroes Day, Easter, Christmas demand patterns
-- **Local competitor tracking** — Choppies, OK Zimbabwe, Spar, TM Supermarkets
+- **Multi-retailer support** — TM Pick n Pay, OK Zimbabwe, Spar Zimbabwe, SaiMart, Choppies
+
+---
+
+## 📊 Data Overview
+
+| Data Type | Records |
+|-----------|---------|
+| Sales (18 months) | 129,840 |
+| Inventory | 240 |
+| Supplier Credit | 37 |
+| Staff Records | 12 |
+| Shrinkage | 360 |
+| Promotions | 8 |
+| Competitor Prices | 60 |
+| Store Costs | 144 |
+| Logistics | 55 |
+| Economic Indicators | 180 |
+| **Total** | **130,987** |
 
 ---
 
 ## 📝 Disclaimer
 
 > This project uses simulated data and real brand names/logos for **portfolio and educational purposes only**.  
-> It is not affiliated with, endorsed by, or connected to Pick n Pay Group, TM Supermarkets, or any other brand mentioned.  
+> It is not affiliated with, endorsed by, or connected to Pick n Pay Group, TM Supermarkets, OK Zimbabwe, Spar, Choppies, or any other brand mentioned.  
 > All revenue figures, store data, supplier information and performance metrics are entirely fictional.
 
 ---
@@ -174,9 +209,24 @@ zimretail-iq/
 ## 👤 Author
 
 **Anesu Manjengwa (Icey)**  
-BCA Final Year | Full-Stack Developer | Zimbabwe 🇿🇼  
-[GitHub](https://github.com/YOUR_USERNAME) · [LinkedIn](https://linkedin.com/in/YOUR_PROFILE)
+Full-Stack Developer | Zimbabwe 🇿🇼  
+
+[GitHub](https://github.com/Iceyma02) · [LinkedIn](https://www.linkedin.com/in/anesu-manjengwa-684766247) · [Portfolio](https://anesumanjengwa.vercel.app)
 
 ---
 
-*Built with 🔥 as a portfolio project — March 2025*
+## 📄 License
+
+**Copyright © 2026 Anesu Manjengwa. All Rights Reserved.**
+
+This project is protected under a **view-only license**. You may view, fork, and study the code for personal and educational purposes. Commercial use, modification, distribution, or production deployment is strictly prohibited without explicit written permission.
+
+For licensing inquiries: **manjengwap10@gmail.com**
+
+---
+
+*Built with 🔥 as a portfolio project — March 2026*
+
+**Live Demo:** [https://web-production-474c8.up.railway.app/](https://web-production-474c8.up.railway.app/)
+```
+
