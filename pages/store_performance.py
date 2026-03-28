@@ -57,76 +57,82 @@ def layout():
     Input("active-retailer", "data")
 )
 def update_performance(days, retailer):
-    df = get_store_revenue_summary(days, retailer)
-    
-    if df.empty:
+    try:
+        df = get_store_revenue_summary(days, retailer)
+        
+        if df.empty:
+            empty_fig = go.Figure()
+            empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"No data available for {retailer}"})
+            return empty_fig, empty_fig, empty_fig, html.Div(f"No performance data for {retailer}")
+
+        df = df.sort_values("total_revenue", ascending=False).reset_index(drop=True)
+
+        # Revenue bar
+        fig_bar = go.Figure(go.Bar(
+            x=df["store_name"], y=df["total_revenue"],
+            marker_color=["#00c853" if i < 3 else "#3b82f6" if i < 6 else "#555" for i in range(len(df))],
+            text=df["total_revenue"].apply(lambda x: f"${x:,.0f}"),
+            textposition="outside", textfont={"color": "#aaa", "size": 11}
+        ))
+        retailer_name = retailer if retailer != "ALL" else "All Retailers"
+        fig_bar.update_layout(**CHART_LAYOUT, title={"text": f"Revenue by Store — Last {days} Days ({retailer_name})", "font": {"color": "#ccc", "size": 13}})
+        fig_bar.update_yaxes(tickprefix="$")
+
+        # Margin chart
+        df_sorted_margin = df.sort_values("margin_pct", ascending=True).reset_index(drop=True)
+        fig_margin = go.Figure(go.Bar(
+            x=df_sorted_margin["margin_pct"], y=df_sorted_margin["store_name"],
+            orientation="h",
+            marker_color=["#22c55e" if m > 18 else "#f97316" if m > 12 else "#ef4444"
+                          for m in df_sorted_margin["margin_pct"]],
+            text=df_sorted_margin["margin_pct"].apply(lambda x: f"{x:.1f}%"),
+            textposition="outside"
+        ))
+        fig_margin.update_layout(**CHART_LAYOUT, title={"text": "Profit Margin % by Store", "font": {"color": "#ccc", "size": 13}})
+        fig_margin.update_xaxes(ticksuffix="%")
+
+        # Scatter
+        fig_scatter = px.scatter(
+            df, x="total_revenue", y="total_profit",
+            size="total_units", color="margin_pct",
+            text="store_name",
+            color_continuous_scale=["#ef4444", "#eab308", "#22c55e"],
+            size_max=40
+        )
+        fig_scatter.update_traces(textposition="top center", textfont={"size": 10, "color": "#aaa"})
+        fig_scatter.update_layout(**CHART_LAYOUT, 
+                                   title={"text": "Revenue vs Profit (bubble = units)", "font": {"color": "#ccc", "size": 13}})
+        fig_scatter.update_xaxes(tickprefix="$")
+        fig_scatter.update_yaxes(tickprefix="$")
+
+        # Table
+        headers = ["Store", "Retailer", "City", "Revenue", "Profit", "Units", "Margin", "Rank"]
+        header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 12px",
+                                                 "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
+                              for h in headers])
+        rows = []
+        for rank, (_, row) in enumerate(df.iterrows(), 1):
+            medal = ["🥇", "🥈", "🥉"][rank-1] if rank <= 3 else f"#{rank}"
+            m = row["margin_pct"] or 0
+            margin_color = "#22c55e" if m > 18 else "#f97316" if m > 12 else "#ef4444"
+            retailer_icon = {"PNP": "🛒", "OK": "🛍️", "SPAR": "🏪", "SAIMART": "🏬", "CHOPPIES": "🛒"}.get(row.get("retailer_id", ""), "📍")
+            rows.append(html.Tr([
+                html.Td(row["store_name"], style={"color": "#ddd", "padding": "8px 12px", "fontSize": "13px"}),
+                html.Td(f"{retailer_icon} {row.get('retailer_id', 'N/A')}", style={"color": "#888", "padding": "8px 12px", "fontSize": "12px"}),
+                html.Td(row["city"], style={"color": "#888", "padding": "8px 12px", "fontSize": "12px"}),
+                html.Td(f"${row['total_revenue']:,.0f}", style={"color": "#fff", "padding": "8px 12px", "fontWeight": "600"}),
+                html.Td(f"${row['total_profit']:,.0f}", style={"color": "#22c55e", "padding": "8px 12px"}),
+                html.Td(f"{int(row['total_units']):,}", style={"color": "#888", "padding": "8px 12px"}),
+                html.Td(f"{m:.1f}%", style={"color": margin_color, "padding": "8px 12px", "fontWeight": "600"}),
+                html.Td(medal, style={"padding": "8px 12px", "fontSize": "14px"}),
+            ], style={"borderBottom": "1px solid #1a1a1a"}))
+
+        table = html.Table([html.Thead(header_row), html.Tbody(rows)],
+                           style={"width": "100%", "borderCollapse": "collapse"})
+        return fig_bar, fig_margin, fig_scatter, table
+        
+    except Exception as e:
+        print(f"Error in performance: {e}")
         empty_fig = go.Figure()
-        empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"No data available for {retailer}"})
-        return empty_fig, empty_fig, empty_fig, html.Div(f"No performance data for {retailer}")
-
-    df = df.sort_values("total_revenue", ascending=False).reset_index(drop=True)
-
-    # Revenue bar
-    fig_bar = go.Figure(go.Bar(
-        x=df["store_name"], y=df["total_revenue"],
-        marker_color=["#00c853" if i < 3 else "#3b82f6" if i < 6 else "#555" for i in range(len(df))],
-        text=df["total_revenue"].apply(lambda x: f"${x:,.0f}"),
-        textposition="outside", textfont={"color": "#aaa", "size": 11}
-    ))
-    retailer_name = retailer if retailer != "ALL" else "All Retailers"
-    fig_bar.update_layout(**CHART_LAYOUT, title={"text": f"Revenue by Store — Last {days} Days ({retailer_name})", "font": {"color": "#ccc", "size": 13}})
-    # FIXED: Use update_yaxes instead of update_yaxis
-    fig_bar.update_yaxes(tickprefix="$")
-
-    # Margin chart
-    df_sorted_margin = df.sort_values("margin_pct", ascending=True).reset_index(drop=True)
-    fig_margin = go.Figure(go.Bar(
-        x=df_sorted_margin["margin_pct"], y=df_sorted_margin["store_name"],
-        orientation="h",
-        marker_color=["#22c55e" if m > 18 else "#f97316" if m > 12 else "#ef4444"
-                      for m in df_sorted_margin["margin_pct"]],
-        text=df_sorted_margin["margin_pct"].apply(lambda x: f"{x:.1f}%"),
-        textposition="outside"
-    ))
-    fig_margin.update_layout(**CHART_LAYOUT, title={"text": "Profit Margin % by Store", "font": {"color": "#ccc", "size": 13}})
-    fig_margin.update_xaxes(ticksuffix="%")
-
-    # Scatter
-    fig_scatter = px.scatter(
-        df, x="total_revenue", y="total_profit",
-        size="total_units", color="margin_pct",
-        text="store_name",
-        color_continuous_scale=["#ef4444", "#eab308", "#22c55e"],
-        size_max=40
-    )
-    fig_scatter.update_traces(textposition="top center", textfont={"size": 10, "color": "#aaa"})
-    fig_scatter.update_layout(**CHART_LAYOUT, 
-                               title={"text": "Revenue vs Profit (bubble = units)", "font": {"color": "#ccc", "size": 13}})
-    fig_scatter.update_xaxes(tickprefix="$")
-    fig_scatter.update_yaxes(tickprefix="$")
-
-    # Table
-    headers = ["Store", "Retailer", "City", "Revenue", "Profit", "Units", "Margin", "Rank"]
-    header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 12px",
-                                             "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
-                          for h in headers])
-    rows = []
-    for rank, (_, row) in enumerate(df.iterrows(), 1):
-        medal = ["🥇", "🥈", "🥉"][rank-1] if rank <= 3 else f"#{rank}"
-        m = row["margin_pct"] or 0
-        margin_color = "#22c55e" if m > 18 else "#f97316" if m > 12 else "#ef4444"
-        retailer_icon = {"PNP": "🛒", "OK": "🛍️", "SPAR": "🏪", "SAIMART": "🏬", "CHOPPIES": "🛒"}.get(row.get("retailer_id", ""), "📍")
-        rows.append(html.Tr([
-            html.Td(row["store_name"], style={"color": "#ddd", "padding": "8px 12px", "fontSize": "13px"}),
-            html.Td(f"{retailer_icon} {row.get('retailer_id', 'N/A')}", style={"color": "#888", "padding": "8px 12px", "fontSize": "12px"}),
-            html.Td(row["city"], style={"color": "#888", "padding": "8px 12px", "fontSize": "12px"}),
-            html.Td(f"${row['total_revenue']:,.0f}", style={"color": "#fff", "padding": "8px 12px", "fontWeight": "600"}),
-            html.Td(f"${row['total_profit']:,.0f}", style={"color": "#22c55e", "padding": "8px 12px"}),
-            html.Td(f"{int(row['total_units']):,}", style={"color": "#888", "padding": "8px 12px"}),
-            html.Td(f"{m:.1f}%", style={"color": margin_color, "padding": "8px 12px", "fontWeight": "600"}),
-            html.Td(medal, style={"padding": "8px 12px", "fontSize": "14px"}),
-        ], style={"borderBottom": "1px solid #1a1a1a"}))
-
-    table = html.Table([html.Thead(header_row), html.Tbody(rows)],
-                       style={"width": "100%", "borderCollapse": "collapse"})
-    return fig_bar, fig_margin, fig_scatter, table
+        empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
+        return empty_fig, empty_fig, empty_fig, html.Div(f"Error: {e}")
