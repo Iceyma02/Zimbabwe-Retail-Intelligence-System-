@@ -154,6 +154,7 @@ def get_national_kpis(days=30, retailer_filter=None):
 
 
 def get_store_revenue_summary(days=30, retailer_filter=None):
+    """Get store revenue summary - FIXED: WHERE clause after JOIN"""
     sql = f"""
         SELECT s.store_id, s.name as store_name, s.city, s.lat, s.lng, s.retailer_id,
                COALESCE(ROUND(SUM(sa.revenue), 2), 0) as total_revenue,
@@ -162,11 +163,10 @@ def get_store_revenue_summary(days=30, retailer_filter=None):
                COALESCE(ROUND(SUM(sa.profit)*100.0/NULLIF(SUM(sa.revenue),0), 1), 0) as margin_pct
         FROM stores s
         LEFT JOIN sales sa ON s.store_id = sa.store_id AND sa.date >= date('now', '-{days} days')
-        GROUP BY s.store_id
-        ORDER BY total_revenue DESC
     """
     if retailer_filter and retailer_filter != "ALL":
-        sql = sql.replace("FROM stores s", f"FROM stores s WHERE s.retailer_id = '{retailer_filter}'")
+        sql += f" WHERE s.retailer_id = '{retailer_filter}'"
+    sql += " GROUP BY s.store_id ORDER BY total_revenue DESC"
     return query(sql)
 
 
