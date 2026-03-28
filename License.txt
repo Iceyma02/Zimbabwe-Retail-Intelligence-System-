@@ -1,0 +1,14 @@
+Copyright (c) 2026 Anesu Manjengwa
+
+All rights reserved.
+
+This software and its source code are made available for viewing purposes only. 
+You may view, fork, and study the code for personal and educational purposes.
+
+You may NOT:
+- Use this software for any commercial purpose
+- Modify and distribute modified versions
+- Incorporate this code into other projects
+- Deploy this software for production use
+
+For licensing inquiries or permission requests, contact: manjengwap10@gmail.com
