@@ -1,4 +1,4 @@
-"""Executive Reports — Page 17"""
+"""Executive Reports — Page 17 with Retailer Filter"""
 import dash
 from dash import html, dcc, callback, Input, Output, State
 import plotly.graph_objects as go
@@ -15,7 +15,6 @@ def layout():
     return html.Div([
         page_header("Executive Reports", "One-click board-ready summaries — PDF export for leadership", "fa-file-pdf"),
         html.Div([
-            # Report config card
             html.Div([
                 html.Div([
                     html.Div("📋 Report Configuration", style={
@@ -62,32 +61,30 @@ def layout():
                                             "width": "100%"
                                         })
                         ], style={"width": "180px"}),
-                    ], style={"display": "flex", "gap": "14px", "alignItems": "flex-end"})
+                    ], style={"display": "flex", "gap": "14px", "alignItems": "flex-end", "flexWrap": "wrap"})
                 ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px",
                           "marginBottom": "20px"})
             ]),
-
-            # Report preview area
             html.Div(id="rpt-preview")
         ], style={"padding": "20px 28px"})
     ])
 
 
-def build_report_preview(report_type, days):
-    """Build a beautiful HTML report preview"""
-    kpis = get_national_kpis(days)
-    store_rev = get_store_revenue_summary(days)
-    inv = get_inventory_simple()
+def build_report_preview(report_type, days, retailer):
+    """Build a beautiful HTML report preview with retailer filter"""
+    kpis = get_national_kpis(days, retailer)
+    store_rev = get_store_revenue_summary(days, retailer)
+    inv = get_inventory_simple(retailer)
     credit = get_supplier_credit()
     economic = get_economic_indicators()
 
-    revenue = kpis["total_revenue"].iloc[0] or 0
-    profit = kpis["total_profit"].iloc[0] or 0
-    margin = kpis["margin_pct"].iloc[0] or 0
-    critical_stock = len(inv[inv["status"] == "CRITICAL"])
-    low_stock = len(inv[inv["status"] == "LOW"])
-    outstanding_debt = credit["outstanding_usd"].sum()
-    stopped_suppliers = len(credit[credit["supplier_status"] == "STOPPED"]["supplier_name"].unique())
+    revenue = kpis["total_revenue"].iloc[0] if not kpis.empty else 0
+    profit = kpis["total_profit"].iloc[0] if not kpis.empty else 0
+    margin = kpis["margin_pct"].iloc[0] if not kpis.empty else 0
+    critical_stock = len(inv[inv["status"] == "CRITICAL"]) if not inv.empty else 0
+    low_stock = len(inv[inv["status"] == "LOW"]) if not inv.empty else 0
+    outstanding_debt = credit["outstanding_usd"].sum() if not credit.empty else 0
+    stopped_suppliers = len(credit[credit["supplier_status"] == "STOPPED"]["supplier_name"].unique()) if not credit.empty else 0
     latest_zig = economic["usd_zig_rate"].iloc[0] if not economic.empty else "N/A"
     latest_inflation = economic["inflation_rate_percent"].iloc[0] if not economic.empty else "N/A"
 
@@ -95,8 +92,8 @@ def build_report_preview(report_type, days):
     bottom_store = store_rev.iloc[-1] if not store_rev.empty else None
 
     generated_at = datetime.now().strftime("%B %d, %Y at %H:%M")
+    retailer_name = retailer if retailer != "ALL" else "All Retailers"
 
-    # Risk assessment
     risks = []
     if critical_stock > 10:
         risks.append(f"⚠️  {critical_stock} products at CRITICAL stock levels across all stores")
@@ -109,7 +106,6 @@ def build_report_preview(report_type, days):
     if not risks:
         risks.append("✅ No critical risks identified in this period")
 
-    # Wins
     wins = []
     if margin > 15:
         wins.append(f"✅ Strong profit margin at {margin:.1f}%")
@@ -124,14 +120,13 @@ def build_report_preview(report_type, days):
         ], style={"display": "flex", "padding": "8px 0", "borderBottom": "1px solid #1e1e1e"})
 
     report = html.Div([
-        # Report header
         html.Div([
             html.Div([
                 html.Div([
-                    html.Span("PnP", style={"color": "#00c853", "fontWeight": "800", "fontSize": "22px"}),
-                    html.Span(" Zimbabwe", style={"color": "#fff", "fontSize": "18px"}),
+                    html.Span("ZimRetail", style={"color": "#00c853", "fontWeight": "800", "fontSize": "22px"}),
+                    html.Span(" IQ", style={"color": "#fff", "fontSize": "18px"}),
                 ]),
-                html.Div("Retail Intelligence Platform — Executive Report",
+                html.Div(f"Retail Intelligence Platform — Executive Report for {retailer_name}",
                          style={"color": "#888", "fontSize": "12px"}),
             ]),
             html.Div([
@@ -141,7 +136,6 @@ def build_report_preview(report_type, days):
         ], style={"display": "flex", "justifyContent": "space-between", "alignItems": "center",
                   "borderBottom": "2px solid #e31837", "paddingBottom": "16px", "marginBottom": "24px"}),
 
-        # National KPIs
         html.Div([
             html.Div("NATIONAL PERFORMANCE", style={"color": "#00c853", "fontSize": "11px",
                                                       "textTransform": "uppercase", "letterSpacing": "1.5px",
@@ -168,15 +162,15 @@ def build_report_preview(report_type, days):
                 ], style={"flex": 1, "textAlign": "center", "padding": "16px",
                            "background": "#1a1a1a", "borderRadius": "8px"}),
                 html.Div([
-                    html.Div("9", style={"color": "#3b82f6", "fontSize": "32px",
-                                          "fontWeight": "800", "fontFamily": "'Syne', sans-serif"}),
+                    html.Div(str(len(store_rev)) if not store_rev.empty else "0", 
+                             style={"color": "#3b82f6", "fontSize": "32px",
+                                    "fontWeight": "800", "fontFamily": "'Syne', sans-serif"}),
                     html.Div("Active Stores", style={"color": "#888", "fontSize": "11px"})
                 ], style={"flex": 1, "textAlign": "center", "padding": "16px",
                            "background": "#1a1a1a", "borderRadius": "8px"}),
-            ], style={"display": "flex", "gap": "12px"})
+            ], style={"display": "flex", "gap": "12px", "flexWrap": "wrap"})
         ], style={"marginBottom": "24px"}),
 
-        # Two columns — Store ranking + Financial detail
         html.Div([
             html.Div([
                 html.Div("STORE RANKINGS", style={"color": "#888", "fontSize": "11px",
@@ -186,7 +180,7 @@ def build_report_preview(report_type, days):
                     f"{'🥇' if i==0 else '🥈' if i==1 else '🥉' if i==2 else f'#{i+1}'} {row['store_name']}",
                     f"${row['total_revenue']:,.0f}",
                     "#22c55e" if i < 3 else "#fff"
-                ) for i, (_, row) in enumerate(store_rev.iterrows())]
+                ) for i, (_, row) in enumerate(store_rev.iterrows())] if not store_rev.empty else [html.Div("No store data", style={"color": "#888"})]
             ], style={"flex": 1, "background": "#1a1a1a", "borderRadius": "8px", "padding": "16px"}),
 
             html.Div([
@@ -203,9 +197,8 @@ def build_report_preview(report_type, days):
                 metric_row("USD / ZiG Rate", str(latest_zig), "#eab308"),
                 metric_row("Inflation Rate", f"{latest_inflation}%", "#ef4444"),
             ], style={"flex": 1, "background": "#1a1a1a", "borderRadius": "8px", "padding": "16px"}),
-        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px"}),
+        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px", "flexWrap": "wrap"}),
 
-        # Risks & Wins
         html.Div([
             html.Div([
                 html.Div("🚨 KEY RISKS", style={"color": "#ef4444", "fontSize": "12px",
@@ -222,9 +215,8 @@ def build_report_preview(report_type, days):
                                       "borderBottom": "1px solid #2a2a2a"}) for w in wins]
             ], style={"flex": 1, "background": "#0a1a0a", "border": "1px solid #22c55e30",
                        "borderRadius": "8px", "padding": "16px"}),
-        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px"}),
+        ], style={"display": "flex", "gap": "14px", "marginBottom": "24px", "flexWrap": "wrap"}),
 
-        # Recommended Actions
         html.Div([
             html.Div("⚡ RECOMMENDED ACTIONS", style={"color": "#eab308", "fontSize": "12px",
                                                         "fontWeight": "700", "marginBottom": "12px"}),
@@ -240,7 +232,6 @@ def build_report_preview(report_type, days):
         ], style={"background": "#1a1500", "border": "1px solid #eab30830",
                   "borderRadius": "8px", "padding": "16px"}),
 
-        # Footer
         html.Div([
             html.Div("This report was generated by ZimRetail IQ Retail Intelligence Platform",
                      style={"color": "#444", "fontSize": "11px", "textAlign": "center"}),
@@ -258,7 +249,8 @@ def build_report_preview(report_type, days):
     Input("rpt-generate-btn", "n_clicks"),
     State("rpt-type", "value"),
     State("rpt-period", "value"),
+    State("active-retailer", "data"),
     prevent_initial_call=False
 )
-def generate_report(n_clicks, report_type, days):
-    return build_report_preview(report_type, days)
+def generate_report(n_clicks, report_type, days, retailer):
+    return build_report_preview(report_type, days, retailer)
