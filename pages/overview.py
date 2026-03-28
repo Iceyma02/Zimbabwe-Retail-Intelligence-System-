@@ -182,4 +182,6 @@ def update_overview(_, retailer):
         
     except Exception as e:
         print(f"Error in overview: {e}")
-        return [], go.Figure(), go.Figure(), [], "Store Ranking", [html.Div(f"Error: {e}")]
+        empty_fig = go.Figure()
+        empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
+        return [], empty_fig, empty_fig, [], "Store Ranking", [html.Div(f"Error: {e}")]
