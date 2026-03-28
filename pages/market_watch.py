@@ -1,6 +1,6 @@
-"""Zimbabwe Market Watch — Page 16"""
+"""Zimbabwe Market Watch — Page 16 with Retailer Context"""
 import dash
-from dash import html, dcc
+from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
 import pandas as pd
 import sys, os
@@ -23,18 +23,28 @@ SEASONAL_EVENTS = [
 ]
 
 def layout():
+    return html.Div([
+        page_header("Zimbabwe Market Watch",
+                    "Exchange rates, inflation, fuel, load shedding — local factors affecting retail", "fa-globe-africa"),
+        html.Div(id="market-watch-content", style={"padding": "20px 28px"})
+    ])
+
+
+@callback(
+    Output("market-watch-content", "children"),
+    Input("active-retailer", "data")
+)
+def update_market_watch(retailer):
     try:
         df = get_economic_indicators()
         
         if df.empty:
             return html.Div([
-                page_header("Zimbabwe Market Watch",
-                            "Exchange rates, inflation, fuel, load shedding — local factors affecting retail", "fa-globe-africa"),
-                html.Div([
-                    html.Div("No economic data available", 
-                            style={"textAlign": "center", "padding": "60px", "color": "#888"})
-                ], style={"padding": "20px 28px"})
+                html.Div("No economic data available", 
+                        style={"textAlign": "center", "padding": "60px", "color": "#888"})
             ])
+        
+        retailer_name = retailer if retailer != "ALL" else "All Retailers"
         
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date")
@@ -43,7 +53,6 @@ def layout():
         forex_colors = {"HIGH": "#22c55e", "MEDIUM": "#eab308", "LOW": "#f97316", "CRITICAL": "#ef4444"}
         forex_color = forex_colors.get(latest["forex_availability"], "#888")
 
-        # Live strip
         indicators = [
             {"label": "USD/ZiG Rate",       "value": f"{latest['usd_zig_rate']:.2f}",             "color": "#eab308", "icon": "fa-money-bill-wave"},
             {"label": "Fuel (USD/L)",        "value": f"${latest['fuel_price_usd_per_litre']:.3f}", "color": "#f97316", "icon": "fa-gas-pump"},
@@ -67,35 +76,30 @@ def layout():
             for ind in indicators
         ], style={"display": "flex", "gap": "12px", "marginBottom": "20px", "flexWrap": "wrap"})
 
-        # ZiG rate
         fig_zig = go.Figure(go.Scatter(x=df["date"], y=df["usd_zig_rate"],
                                         line={"color": "#eab308", "width": 2},
                                         fill="tozeroy", fillcolor="rgba(234,179,8,0.07)"))
         fig_zig.update_layout(**CHART_LAYOUT, title={"text": "USD / ZiG Rate (180 Days)", "font": {"color": "#ccc", "size": 13}})
 
-        # Inflation
         fig_inf = go.Figure(go.Scatter(x=df["date"], y=df["inflation_rate_percent"],
                                         line={"color": "#ef4444", "width": 2},
                                         fill="tozeroy", fillcolor="rgba(239,68,68,0.07)"))
         fig_inf.update_layout(**CHART_LAYOUT, title={"text": "Inflation Rate % (180 Days)", "font": {"color": "#ccc", "size": 13}})
 
-        # Fuel
         fig_fuel = go.Figure(go.Scatter(x=df["date"], y=df["fuel_price_usd_per_litre"],
                                          line={"color": "#f97316", "width": 2},
                                          fill="tozeroy", fillcolor="rgba(249,115,22,0.07)"))
         fig_fuel.update_layout(**CHART_LAYOUT, title={"text": "Fuel Price USD/Litre (180 Days)", "font": {"color": "#ccc", "size": 13}})
 
-        # Load shedding - FIXED: Removed alpha channel from color
         weekly_ls = df.set_index("date").resample("W")["load_shedding_hours"].mean().reset_index()
         ls_colors = ["#ef4444" if h > 8 else "#f97316" if h > 4 else "#22c55e" for h in weekly_ls["load_shedding_hours"]]
         fig_ls = go.Figure(go.Bar(x=weekly_ls["date"], y=weekly_ls["load_shedding_hours"], marker_color=ls_colors))
         fig_ls.add_hline(y=8, line_dash="dash", line_color="#ef4444", annotation_text="Critical (8h)")
         fig_ls.update_layout(**CHART_LAYOUT, title={"text": "Weekly Avg Load Shedding Hours", "font": {"color": "#ccc", "size": 13}})
 
-        # Seasonal calendar
         impact_colors = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#eab308", "LOW": "#22c55e"}
         calendar_items = [
-            html.Div("📅 Zimbabwe Retail Seasonal Calendar", style={
+            html.Div(f"📅 Zimbabwe Retail Seasonal Calendar - {retailer_name}", style={
                 "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
                 "letterSpacing": "1px", "marginBottom": "14px"
             })
@@ -116,43 +120,29 @@ def layout():
             ], style={"padding": "8px 0", "borderBottom": "1px solid #1a1a1a"}))
 
         return html.Div([
-            page_header("Zimbabwe Market Watch",
-                        "Exchange rates, inflation, fuel, load shedding — local factors affecting retail", "fa-globe-africa"),
+            strip,
             html.Div([
-                strip,
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_zig, config={"displayModeBar": False}, style={"height": "280px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_inf, config={"displayModeBar": False}, style={"height": "280px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_fuel, config={"displayModeBar": False}, style={"height": "280px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_ls, config={"displayModeBar": False}, style={"height": "240px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                    html.Div(calendar_items,
-                             style={"flex": "1.4", "background": "#161616", "border": "1px solid #222",
-                                    "borderRadius": "10px", "padding": "20px"}),
-                ], style={"display": "flex", "gap": "14px"}),
-            ], style={"padding": "20px 28px"})
+                html.Div([dcc.Graph(figure=fig_zig, config={"displayModeBar": False}, style={"height": "280px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                html.Div([dcc.Graph(figure=fig_inf, config={"displayModeBar": False}, style={"height": "280px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                html.Div([dcc.Graph(figure=fig_fuel, config={"displayModeBar": False}, style={"height": "280px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+            ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
+            html.Div([
+                html.Div([dcc.Graph(figure=fig_ls, config={"displayModeBar": False}, style={"height": "240px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                html.Div(calendar_items,
+                         style={"flex": "1.4", "background": "#161616", "border": "1px solid #222",
+                                "borderRadius": "10px", "padding": "20px"}),
+            ], style={"display": "flex", "gap": "14px"}),
         ])
         
     except Exception as e:
-        print(f"Error in market watch layout: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error in market watch: {e}")
         return html.Div([
-            page_header("Zimbabwe Market Watch",
-                        "Exchange rates, inflation, fuel, load shedding — local factors affecting retail", "fa-globe-africa"),
-            html.Div([
-                html.Div([
-                    html.Div("⚠️ Error Loading Data", style={
-                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
-                    }),
-                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database contains economic data.",
-                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
-                ], style={"textAlign": "center", "padding": "60px"})
-            ], style={"padding": "20px 28px"})
-        ])
+            html.Div("⚠️ Error Loading Data", style={
+                "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
+            }),
+            html.Div(str(e), style={"color": "#888", "fontSize": "14px"})
+        ], style={"textAlign": "center", "padding": "60px"})
