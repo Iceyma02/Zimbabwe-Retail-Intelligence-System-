@@ -66,12 +66,10 @@ def get_inventory_simple(retailer_filter=None):
                p.shelf_life_days,
                s.name as store_name, 
                s.city,
-               s.retailer_id,
-               sup.name as supplier_name
+               s.retailer_id
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
-        LEFT JOIN suppliers sup ON p.supplier = sup.name
     """
     if retailer_filter and retailer_filter != "ALL":
         sql += f" WHERE s.retailer_id = '{retailer_filter}'"
