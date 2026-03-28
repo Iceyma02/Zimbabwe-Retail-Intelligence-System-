@@ -1,6 +1,6 @@
-"""Supply Chain Pipeline — Page 9"""
+"""Supply Chain Pipeline — Page 9 with Retailer Filter"""
 import dash
-from dash import html, dcc
+from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
 import pandas as pd
 import sys, os
@@ -15,31 +15,31 @@ STAGE_COLORS = {"ORDER_PLACED": "#6b7280", "DISPATCHED": "#8b5cf6", "IN_TRANSIT"
                 "AT_WAREHOUSE": "#06b6d4", "DELIVERED": "#22c55e", "DELAYED": "#ef4444"}
 
 def layout():
-    """Layout for supply chain page with error handling"""
+    return html.Div([
+        page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
+        html.Div(id="supply-chain-content", style={"padding": "20px 28px"})
+    ])
+
+
+@callback(
+    Output("supply-chain-content", "children"),
+    Input("active-retailer", "data")
+)
+def update_supply_chain(retailer):
     try:
-        df = get_logistics()
+        df = get_logistics(retailer)
         
-        # Check if data is empty
         if df.empty:
             return html.Div([
-                page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
-                html.Div([
-                    html.Div("No supply chain data available", 
-                            style={"textAlign": "center", "padding": "60px", "color": "#888"})
-                ], style={"padding": "20px 28px"})
+                html.Div("No supply chain data available", 
+                        style={"textAlign": "center", "padding": "60px", "color": "#888"})
             ])
         
-        # Ensure required columns exist
-        required_cols = ["status", "order_value_usd", "supplier_name", "store_name", 
-                         "order_id", "expected_delivery", "delay_days"]
-        for col in required_cols:
-            if col not in df.columns:
-                df[col] = None if col != "delay_days" else 0
+        retailer_name = retailer if retailer != "ALL" else "All Retailers"
         
         status_counts = df["status"].value_counts().to_dict()
         delayed = df[df["status"] == "DELAYED"] if "DELAYED" in df["status"].values else pd.DataFrame()
 
-        # Pipeline flow
         pipeline_nodes = []
         for stage in PIPELINE_STAGES:
             count = status_counts.get(stage, 0)
@@ -73,16 +73,14 @@ def layout():
         ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px",
                   "padding": "20px", "marginBottom": "14px"})
 
-        # Status donut
         status_df = df["status"].value_counts().reset_index()
         status_df.columns = ["status", "count"]
         fig_status = go.Figure(go.Pie(
             labels=status_df["status"], values=status_df["count"], hole=0.45,
             marker={"colors": [STAGE_COLORS.get(s, "#888") for s in status_df["status"]]}
         ))
-        fig_status.update_layout(**CHART_LAYOUT, title={"text": "Order Status Distribution", "font": {"color": "#ccc", "size": 13}})
+        fig_status.update_layout(**CHART_LAYOUT, title={"text": f"Order Status Distribution - {retailer_name}", "font": {"color": "#ccc", "size": 13}})
 
-        # Value by supplier - FIXED: Proper layout merging
         sup_val = df.groupby("supplier_name")["order_value_usd"].sum().sort_values(ascending=False).head(10).reset_index()
         if not sup_val.empty:
             fig_val = go.Figure(go.Bar(
@@ -91,15 +89,14 @@ def layout():
             ))
             val_layout = CHART_LAYOUT.copy()
             val_layout.update({
-                "title": {"text": "Order Value by Supplier (Top 10)", "font": {"color": "#ccc", "size": 13}},
+                "title": {"text": f"Order Value by Supplier (Top 10) - {retailer_name}", "font": {"color": "#ccc", "size": 13}},
                 "yaxis": {"categoryorder": "total ascending"}
             })
             fig_val.update_layout(**val_layout)
         else:
             fig_val = go.Figure()
-            fig_val.update_layout(**CHART_LAYOUT, title={"text": "No supplier data", "font": {"color": "#ccc"}})
+            fig_val.update_layout(**CHART_LAYOUT, title={"text": "No supplier data"})
 
-        # Orders table
         headers = ["Order ID", "Supplier", "Store", "Value", "Status", "Expected", "Delay"]
         header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "7px 10px",
                                                  "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
@@ -122,37 +119,25 @@ def layout():
                            style={"width": "100%", "borderCollapse": "collapse"})
 
         return html.Div([
-            page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
+            pipeline_block,
             html.Div([
-                pipeline_block,
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_status, config={"displayModeBar": False}, style={"height": "260px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_val, config={"displayModeBar": False}, style={"height": "260px"})],
-                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px"}),
-                html.Div([
-                    html.Div("Active Orders", style={"color": "#888", "fontSize": "11px", "textTransform": "uppercase",
+                html.Div([dcc.Graph(figure=fig_status, config={"displayModeBar": False}, style={"height": "260px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                html.Div([dcc.Graph(figure=fig_val, config={"displayModeBar": False}, style={"height": "260px"})],
+                         style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+            ], style={"display": "flex", "gap": "14px", "marginBottom": "14px"}),
+            html.Div([
+                html.Div(f"Active Orders - {retailer_name}", style={"color": "#888", "fontSize": "11px", "textTransform": "uppercase",
                                                       "letterSpacing": "1px", "marginBottom": "14px"}),
-                    table
-                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
-            ], style={"padding": "20px 28px"})
+                table
+            ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px", "overflowX": "auto"}),
         ])
         
     except Exception as e:
-        print(f"Error in supply chain layout: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error in supply chain: {e}")
         return html.Div([
-            page_header("Supply Chain Pipeline", "End-to-end visibility from supplier factory to store shelf", "fa-truck-fast"),
-            html.Div([
-                html.Div([
-                    html.Div("⚠️ Error Loading Data", style={
-                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
-                    }),
-                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database contains logistics data.",
-                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
-                ], style={"textAlign": "center", "padding": "60px"})
-            ], style={"padding": "20px 28px"})
-        ])
+            html.Div("⚠️ Error Loading Data", style={
+                "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
+            }),
+            html.Div(str(e), style={"color": "#888", "fontSize": "14px"})
+        ], style={"textAlign": "center", "padding": "60px"})
