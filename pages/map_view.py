@@ -1,4 +1,4 @@
-"""Map View — Page 2 with Retailer Filter"""
+"""Map View — Page 2 with Retailer Filter and Store Logos"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
@@ -10,11 +10,19 @@ from components.shared import *
 
 dash.register_page(__name__, path="/map", name="Map View", order=1)
 
+# Retailer logo mapping
+RETAILER_LOGOS = {
+    "PNP": "/assets/logos/pnp.png",
+    "OK": "/assets/logos/ok.png",
+    "SPAR": "/assets/logos/spar.png",
+    "SAIMART": "/assets/logos/saimart.png",
+    "CHOPPIES": "/assets/logos/choppies.png",
+}
+
 def layout():
     return html.Div([
         page_header("Map View", "All ZimRetail IQ store locations with live performance overlay", "fa-map-location-dot"),
         html.Div([
-            # Controls
             html.Div([
                 html.Div([
                     html.Label("Color stores by:", style={"color": "#888", "fontSize": "12px"}),
@@ -31,17 +39,12 @@ def layout():
                     )
                 ], style={"background": "#161616", "border": "1px solid #222",
                            "borderRadius": "10px", "padding": "16px", "marginBottom": "14px"}),
-
                 html.Div(id="map-store-cards")
             ], style={"width": "260px", "flexShrink": 0}),
-
-            # Map
             html.Div([
-                dcc.Graph(id="zimbabwe-map", config={"displayModeBar": False},
-                          style={"height": "680px"})
+                dcc.Graph(id="zimbabwe-map", config={"displayModeBar": False}, style={"height": "680px"})
             ], style={"flex": 1, "background": "#161616", "border": "1px solid #222",
                       "borderRadius": "10px", "padding": "8px"})
-
         ], style={"display": "flex", "gap": "14px", "padding": "20px 28px"}),
     ])
 
@@ -50,14 +53,10 @@ def layout():
     Output("zimbabwe-map", "figure"),
     Output("map-store-cards", "children"),
     Input("map-color-by", "value"),
-    Input("active-retailer", "data")  # Added retailer filter
+    Input("active-retailer", "data")
 )
 def update_map(color_by, retailer):
-    df = get_store_revenue_summary(30)
-    
-    # Filter by retailer
-    if retailer != "ALL":
-        df = df[df["retailer_id"] == retailer]
+    df = get_store_revenue_summary(30, retailer)
     
     if df.empty:
         empty_fig = go.Figure()
@@ -71,14 +70,15 @@ def update_map(color_by, retailer):
     color_col = {"revenue": "total_revenue", "profit": "total_profit", "margin": "margin_pct"}[color_by]
     color_label = {"revenue": "Revenue ($)", "profit": "Profit ($)", "margin": "Margin (%)"}[color_by]
 
-    # Tier labels
     df = df.sort_values(color_col, ascending=False).reset_index(drop=True)
     df["tier"] = df.index.map(lambda i: "🥇 Top" if i < 3 else ("🟡 Mid" if i < 6 else "🔴 Low"))
     df["size"] = df[color_col] / df[color_col].max() * 40 + 15 if df[color_col].max() > 0 else 20
 
+    retailer_icons = {"PNP": "🛒", "OK": "🛍️", "SPAR": "🏪", "SAIMART": "🏬", "CHOPPIES": "🛒"}
+    
     hover_text = df.apply(lambda r: (
         f"<b>{r['store_name']}</b><br>"
-        f"Retailer: {r.get('retailer_id', 'N/A')}<br>"
+        f"Retailer: {retailer_icons.get(r.get('retailer_id', ''), '📍')} {r.get('retailer_id', 'N/A')}<br>"
         f"City: {r['city']}<br>"
         f"Revenue: ${r['total_revenue']:,.0f}<br>"
         f"Profit: ${r['total_profit']:,.0f}<br>"
@@ -87,8 +87,6 @@ def update_map(color_by, retailer):
     ), axis=1)
 
     fig = go.Figure()
-
-    # Add scatter mapbox
     fig.add_trace(go.Scattermapbox(
         lat=df["lat"], lon=df["lng"],
         mode="markers+text",
@@ -119,14 +117,27 @@ def update_map(color_by, retailer):
         font={"color": "#aaa"}
     )
 
-    # Store cards
+    # Create store cards with logos
     cards = []
     for _, row in df.iterrows():
         tier_color = {"🥇 Top": "#22c55e", "🟡 Mid": "#eab308", "🔴 Low": "#ef4444"}[row["tier"]]
-        retailer_icon = {"PNP": "🛒", "OK": "🛍️", "SPAR": "🏪", "SAIMART": "🏬", "CHOPPIES": "🛒"}.get(row.get("retailer_id", ""), "📍")
+        retailer_logo = RETAILER_LOGOS.get(row.get("retailer_id", ""))
+        retailer_icon = retailer_icons.get(row.get("retailer_id", ""), "📍")
+        
+        # Check if logo exists
+        logo_exists = False
+        if retailer_logo:
+            logo_path = os.path.join("assets", "logos", os.path.basename(retailer_logo))
+            if os.path.exists(logo_path):
+                logo_exists = True
+        
         cards.append(html.Div([
             html.Div([
-                html.Span(f"{retailer_icon} {row['tier'].split()[0]}", style={"fontSize": "14px"}),
+                # Logo or icon
+                html.Img(src=retailer_logo, style={
+                    "height": "20px", "width": "20px", "marginRight": "8px", "objectFit": "contain"
+                }) if logo_exists else html.Span(retailer_icon, style={"fontSize": "14px", "marginRight": "8px"}),
+                html.Span(row["tier"].split()[0], style={"fontSize": "14px"}),
                 html.Div([
                     html.Div(row["store_name"], style={"color": "#ddd", "fontSize": "12px", "fontWeight": "500"}),
                     html.Div(row["city"], style={"color": "#666", "fontSize": "11px"})
@@ -136,8 +147,9 @@ def update_map(color_by, retailer):
         ], style={"padding": "8px 12px", "borderBottom": "1px solid #1e1e1e",
                   "background": "#161616", "cursor": "pointer"}))
 
+    retailer_name = retailer if retailer != "ALL" else "All Retailers"
     cards_container = html.Div([
-        html.Div(f"Store Rankings — {retailer if retailer != 'ALL' else 'All Retailers'}", 
+        html.Div(f"Store Rankings — {retailer_name}", 
                  style={"color": "#888", "fontSize": "11px",
                         "textTransform": "uppercase", "letterSpacing": "1px",
                         "padding": "12px", "borderBottom": "1px solid #222"}),
