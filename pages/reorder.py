@@ -58,13 +58,20 @@ def get_reorder_data():
             inv["product_name"] = inv["product_name"].apply(flatten_string)
         
         if "store_name" in inv.columns:
-            inv["store_name"] = inv["store_name"].apply(flatten_string)
+            # Handle if store_name is a DataFrame with multiple columns
+            if isinstance(inv["store_name"], pd.DataFrame):
+                inv["store_name"] = inv["store_name"].iloc[:, 0].apply(flatten_string)
+            else:
+                inv["store_name"] = inv["store_name"].apply(flatten_string)
         
         # Flatten numeric columns
         numeric_cols = ["current_stock", "reorder_point", "reorder_qty", "unit_cost"]
         for col in numeric_cols:
             if col in inv.columns:
-                inv[col] = inv[col].apply(flatten_numeric)
+                if isinstance(inv[col], pd.DataFrame):
+                    inv[col] = inv[col].iloc[:, 0].apply(flatten_numeric)
+                else:
+                    inv[col] = inv[col].apply(flatten_numeric)
             else:
                 inv[col] = 0
         
@@ -75,10 +82,17 @@ def get_reorder_data():
         if not sales_30.empty:
             # Flatten product_id in sales
             if "product_id" in sales_30.columns:
-                sales_30["product_id"] = sales_30["product_id"].apply(flatten_string)
+                if isinstance(sales_30["product_id"], pd.DataFrame):
+                    sales_30["product_id"] = sales_30["product_id"].iloc[:, 0].apply(flatten_string)
+                else:
+                    sales_30["product_id"] = sales_30["product_id"].apply(flatten_string)
             
             # Flatten units_sold
-            sales_30["units_sold"] = sales_30["units_sold"].apply(flatten_numeric)
+            if "units_sold" in sales_30.columns:
+                if isinstance(sales_30["units_sold"], pd.DataFrame):
+                    sales_30["units_sold"] = sales_30["units_sold"].iloc[:, 0].apply(flatten_numeric)
+                else:
+                    sales_30["units_sold"] = sales_30["units_sold"].apply(flatten_numeric)
             
             avg_daily = sales_30.groupby("product_id")["units_sold"].mean().reset_index()
             avg_daily.columns = ["product_id", "avg_daily_sales"]
@@ -101,15 +115,20 @@ def get_reorder_data():
         df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999)
         df["days_of_stock"] = df["days_of_stock"].fillna(999)
         
-        # Check if reorder is needed - ensure both are 1D arrays
-        current_stock = df["current_stock"].values.flatten() if hasattr(df["current_stock"].values, 'flatten') else df["current_stock"].values
-        reorder_point = df["reorder_point"].values.flatten() if hasattr(df["reorder_point"].values, 'flatten') else df["reorder_point"].values
+        # Ensure both are 1D arrays and have same length
+        current_stock = df["current_stock"].values
+        reorder_point = df["reorder_point"].values
         
-        # Ensure they have the same shape
+        # Flatten if needed
         if len(current_stock.shape) > 1:
             current_stock = current_stock.flatten()
         if len(reorder_point.shape) > 1:
             reorder_point = reorder_point.flatten()
+        
+        # Ensure same length
+        min_len = min(len(current_stock), len(reorder_point))
+        current_stock = current_stock[:min_len]
+        reorder_point = reorder_point[:min_len]
         
         df["reorder_needed"] = current_stock <= reorder_point
         
