@@ -115,14 +115,21 @@ def update_forecasting_ui(retailer):
 )
 def update_forecast(store_id, product_id, retailer):
     try:
+        # Fixed query with table aliases to avoid ambiguous column names
+        retailer_filter = ""
+        if retailer != "ALL":
+            retailer_filter = f" AND st.retailer_id = '{retailer}'"
+        
         sales = query(f"""
-            SELECT date, SUM(units_sold) as units_sold
-            FROM sales 
-            JOIN stores ON sales.store_id = stores.store_id
-            WHERE store_id='{store_id}' AND product_id='{product_id}'
-            AND date >= date('now','-90 days')
-            {f"AND stores.retailer_id = '{retailer}'" if retailer != "ALL" else ""}
-            GROUP BY date ORDER BY date
+            SELECT s.date, SUM(s.units_sold) as units_sold
+            FROM sales s
+            JOIN stores st ON s.store_id = st.store_id
+            WHERE s.store_id='{store_id}' 
+            AND s.product_id='{product_id}'
+            AND s.date >= date('now','-90 days')
+            {retailer_filter}
+            GROUP BY s.date 
+            ORDER BY s.date
         """)
 
         if sales.empty:
