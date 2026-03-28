@@ -15,6 +15,16 @@ from data.db import (
 )
 from components.shared import page_header, kpi_card, status_badge, CHART_LAYOUT
 
+# Retailer name mapping
+RETAILER_NAMES = {
+    "ALL": "All Retailers",
+    "PNP": "TM Pick n Pay",
+    "OK": "OK Zimbabwe",
+    "SPAR": "Spar Zimbabwe",
+    "SAIMART": "SaiMart",
+    "CHOPPIES": "Choppies Zimbabwe",
+}
+
 dash.register_page(__name__, path="/", name="National Overview", order=0)
 
 def layout():
@@ -58,8 +68,8 @@ def layout():
     Output("store-ranking-list", "children"),
     Output("store-ranking-header", "children"),
     Output("active-alerts", "children"),
-    Input("active-retailer", "data"),  # Add retailer as input
-    Input("overview-refresh", "n_intervals")  # Keep interval for auto-refresh
+    Input("active-retailer", "data"),
+    Input("overview-refresh", "n_intervals")
 )
 def update_overview(retailer, _):
     """Update all overview components when retailer changes or interval triggers"""
@@ -144,13 +154,7 @@ def update_overview(retailer, _):
                 ], style={"display": "flex", "alignItems": "center", "gap": "10px",
                           "padding": "8px 0", "borderBottom": "1px solid #1e1e1e"}))
         
-        retailer_name = "All Retailers" if retailer == "ALL" else next((r["label"] for r in [
-            {"label": "TM Pick n Pay", "value": "PNP"},
-            {"label": "OK Zimbabwe", "value": "OK"},
-            {"label": "Spar Zimbabwe", "value": "SPAR"},
-            {"label": "SaiMart", "value": "SAIMART"},
-            {"label": "Choppies Zimbabwe", "value": "CHOPPIES"},
-        ] if r["value"] == retailer), retailer)
+        retailer_name = RETAILER_NAMES.get(retailer, "All Retailers")
         ranking_header = f"Store Revenue Ranking — Last 30 Days ({retailer_name})"
         
         # Alerts
