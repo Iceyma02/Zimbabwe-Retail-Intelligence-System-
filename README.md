@@ -228,5 +228,5 @@ For licensing inquiries: **manjengwap10@gmail.com**
 *Built with 🔥 as a portfolio project — March 2026*
 
 **Live Demo:** [https://web-production-474c8.up.railway.app/](https://web-production-474c8.up.railway.app/)
-```
+
 
