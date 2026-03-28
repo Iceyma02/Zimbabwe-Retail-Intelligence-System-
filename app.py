@@ -18,7 +18,43 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="ZimRetail IQ — Retail Intelligence Platform"
 )
+# Add this after app = dash.Dash(...) but before layout
 
+# Add custom class for cards
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            .dash-card, .kpi-card, .section-card {
+                animation: fadeSlideUp 0.4s ease-out forwards;
+            }
+            @keyframes fadeSlideUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
 server = app.server
 
 # Retailers with logo paths
