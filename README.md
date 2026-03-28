@@ -211,7 +211,7 @@ zimretail-iq/
 **Anesu Manjengwa**  
 Full-Stack Developer | Zimbabwe 🇿🇼  
 
-[GitHub](https://github.com/Iceyma02) · [LinkedIn](https://www.linkedin.com/in/anesu-manjengwa-684766247) · [Portfolio](https://anesumanjengwa.vercel.app)
+[GitHub](https://github.com/Iceyma02) · [LinkedIn](https://www.linkedin.com/in/anesu-manjengwa-684766247) ·
 
 ---
 
