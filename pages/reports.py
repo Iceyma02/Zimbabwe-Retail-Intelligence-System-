@@ -64,7 +64,7 @@ def layout():
                         ], style={"width": "180px"}),
                         html.Div([
                             html.Label("\u00a0", style={"display": "block", "marginBottom": "6px"}),
-                            html.Button("🖨️ Save as PDF", id="rpt-print-btn",
+                            html.Button("🖨️ Print / Save as PDF", id="rpt-print-btn",
                                         style={
                                             "background": "#3b82f6", "color": "#fff",
                                             "border": "none", "borderRadius": "6px",
@@ -80,8 +80,8 @@ def layout():
             ]),
             # Report preview area
             html.Div(id="rpt-preview", style={"minHeight": "400px"}),
-            # Hidden iframe for printing
-            html.Iframe(id="rpt-print-iframe", style={"display": "none"}),
+            # Hidden div for print trigger
+            html.Div(id="rpt-print-trigger", style={"display": "none"}),
         ], style={"padding": "20px 28px"})
     ])
 
@@ -312,7 +312,7 @@ def generate_preview(n_clicks, report_type, days, retailer):
 
 
 @callback(
-    Output("rpt-print-iframe", "srcDoc"),
+    Output("rpt-print-trigger", "children"),
     Input("rpt-print-btn", "n_clicks"),
     State("rpt-type", "value"),
     State("rpt-period", "value"),
@@ -320,92 +320,59 @@ def generate_preview(n_clicks, report_type, days, retailer):
     prevent_initial_call=True
 )
 def print_report(n_clicks, report_type, days, retailer):
-    """Generate printable version and trigger print"""
+    """Trigger print dialog using JavaScript"""
     if n_clicks is None:
         return ""
     
     # Generate the report content
-    report_content = build_report_preview(report_type, days, retailer)
+    report = build_report_preview(report_type, days, retailer)
     
-    # Convert to string for iframe
-    from dash import html as dash_html
-    content_str = dash_html.Div(report_content).to_string()
-    
-    # Create HTML document for printing with print styles
-    print_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>ZimRetail IQ Report</title>
-        <style>
-            @media print {{
-                body {{
-                    background: white;
-                    margin: 1cm;
-                    font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif;
-                }}
-                .no-print {{
-                    display: none;
-                }}
-                @page {{
-                    size: A4;
-                    margin: 1.5cm;
-                }}
-            }}
-            body {{
-                background: #0d0d0d;
+    # Create JavaScript to open print dialog
+    print_script = html.Script("""
+        // Create a new window with the report content
+        var printWindow = window.open('', '_blank');
+        printWindow.document.write('<html><head><title>ZimRetail IQ Report</title>');
+        printWindow.document.write('<style>');
+        printWindow.document.write(`
+            body {
                 font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif;
                 margin: 0;
                 padding: 20px;
-                color: #ddd;
-            }}
-            .report-container {{
+                background: white;
+                color: black;
+            }
+            .report-container {
                 max-width: 1200px;
                 margin: 0 auto;
-                background: #111;
-                border: 1px solid #222;
-                border-radius: 10px;
-                padding: 28px;
-            }}
-            button {{
-                display: none;
-            }}
-            @media print {{
-                .report-container {{
-                    background: white;
-                    border: none;
-                    padding: 0;
-                    margin: 0;
-                }}
-                * {{
-                    color: black !important;
-                }}
-                .bg-dark {{
-                    background: white !important;
-                }}
-                [style*="background: #1a1a1a"] {{
-                    background: #f5f5f5 !important;
-                }}
-                [style*="border: 1px solid"] {{
-                    border-color: #ddd !important;
-                }}
-            }}
-        </style>
-        <script>
-            window.onload = function() {{
-                setTimeout(function() {{
-                    window.print();
-                }}, 500);
-            }}
-        </script>
-    </head>
-    <body>
-        <div class="report-container">
-            {content_str}
-        </div>
-    </body>
-    </html>
-    """
+                padding: 20px;
+            }
+            h1, h2, h3 { color: #111; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background: #f5f5f5; }
+            .kpi-card { background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px; }
+            .metric-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+            @media print {
+                body { margin: 0; padding: 0; }
+                .no-print { display: none; }
+            }
+        `);
+        printWindow.document.write('</style></head><body>');
+        printWindow.document.write(document.getElementById('report-content').innerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        
+        // Wait for content to load then print
+        printWindow.onload = function() {
+            setTimeout(function() {
+                printWindow.print();
+                printWindow.close();
+            }, 500);
+        };
+    """)
     
-    return print_html
+    # Wrap the report in a hidden div with ID
+    return html.Div([
+        html.Div(id="report-content", style={"display": "none"}, children=report),
+        print_script
+    ])
