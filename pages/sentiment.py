@@ -1,6 +1,6 @@
-"""Customer Sentiment — Page 13 - Enhanced with Store Performance Correlation"""
+"""Customer Sentiment — Page 13 with Retailer Filter & Store Performance Correlation"""
 import dash
-from dash import html, dcc
+from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -12,13 +12,13 @@ from components.shared import *
 
 dash.register_page(__name__, path="/sentiment", name="Customer Sentiment", order=12)
 
-def get_sentiment_data():
+def get_sentiment_data(retailer=None):
     """Generate synthetic sentiment data from stores"""
     try:
-        stores = get_stores()
+        stores = get_stores(retailer)
         
         if stores.empty:
-            print("Warning: No stores found for sentiment data")
+            print(f"Warning: No stores found for sentiment data - {retailer}")
             return pd.DataFrame()
         
         np.random.seed(77)
@@ -36,6 +36,7 @@ def get_sentiment_data():
                         "store_id": s["store_id"], 
                         "store_name": s["name"], 
                         "city": s["city"],
+                        "retailer_id": s["retailer_id"],
                         "month": month, 
                         "nps_score": max(0, min(100, nps_variation)),
                         "complaint_category": cat, 
@@ -48,21 +49,30 @@ def get_sentiment_data():
 
 
 def layout():
-    """Layout for sentiment page with error handling and store performance correlation"""
+    return html.Div([
+        page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
+        html.Div(id="sentiment-content", style={"padding": "20px 28px"})
+    ])
+
+
+@callback(
+    Output("sentiment-content", "children"),
+    Input("active-retailer", "data")
+)
+def update_sentiment(retailer):
     try:
-        df = get_sentiment_data()
+        df = get_sentiment_data(retailer)
+        
+        retailer_name = retailer if retailer != "ALL" else "All Retailers"
         
         if df.empty:
             return html.Div([
-                page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
-                html.Div([
-                    html.Div("No sentiment data available", 
-                            style={"textAlign": "center", "padding": "60px", "color": "#888"})
-                ], style={"padding": "20px 28px"})
+                html.Div(f"No sentiment data available for {retailer_name}", 
+                        style={"textAlign": "center", "padding": "60px", "color": "#888"})
             ])
 
         # Get store performance data for correlation
-        store_performance = get_store_revenue_summary(30)
+        store_performance = get_store_revenue_summary(30, retailer)
         
         # Merge sentiment with performance data
         if not store_performance.empty:
@@ -80,7 +90,10 @@ def layout():
         nps_color = "#22c55e" if national_nps > 60 else "#eab308" if national_nps > 40 else "#ef4444"
 
         # Calculate correlation between NPS and revenue
-        nps_rev_corr = df.groupby("store_name")[["nps_score", "revenue"]].mean().corr().iloc[0, 1] if not df.empty else 0
+        if not df.empty and "revenue" in df.columns:
+            nps_rev_corr = df.groupby("store_name")[["nps_score", "revenue"]].mean().corr().iloc[0, 1]
+        else:
+            nps_rev_corr = 0
         correlation_color = "#22c55e" if nps_rev_corr > 0.3 else "#ef4444" if nps_rev_corr < -0.3 else "#eab308"
 
         kpis = [
@@ -104,7 +117,7 @@ def layout():
         ))
         
         # Add revenue markers if available
-        if "revenue" in df.columns and not df.empty:
+        if "revenue" in df.columns and not df.empty and df["revenue"].sum() > 0:
             store_rev = df.groupby("store_name")["revenue"].mean().reset_index()
             fig_nps.add_trace(go.Scatter(
                 x=store_rev["revenue"] / 1000, y=store_rev["store_name"],
@@ -118,7 +131,7 @@ def layout():
         # Update layout with secondary x-axis for revenue
         fig_nps.update_layout(
             **CHART_LAYOUT,
-            title={"text": "NPS Score by Store (Diamonds = Revenue $K)", "font": {"color": "#ccc", "size": 13}},
+            title={"text": f"NPS Score by Store (Diamonds = Revenue $K) - {retailer_name}", "font": {"color": "#ccc", "size": 13}},
             xaxis_range=[0, 110],
             height=400,
             xaxis2=dict(
@@ -137,7 +150,7 @@ def layout():
             labels=comp_totals["complaint_category"], values=comp_totals["complaint_count"], hole=0.4,
             marker={"colors": ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#06b6d4", "#ec4899"]}
         ))
-        fig_pie.update_layout(**CHART_LAYOUT, title={"text": "Complaint Categories", "font": {"color": "#ccc", "size": 13}})
+        fig_pie.update_layout(**CHART_LAYOUT, title={"text": f"Complaint Categories - {retailer_name}", "font": {"color": "#ccc", "size": 13}})
 
         # NPS trend
         nps_trend = df.groupby("month")["nps_score"].mean().reset_index()
@@ -149,7 +162,7 @@ def layout():
         ))
         fig_trend.add_hline(y=60, line_dash="dash", line_color="#22c55e")
         fig_trend.add_hline(y=40, line_dash="dash", line_color="#ef4444")
-        fig_trend.update_layout(**CHART_LAYOUT, title={"text": "National NPS Trend", "font": {"color": "#ccc", "size": 13}},
+        fig_trend.update_layout(**CHART_LAYOUT, title={"text": f"National NPS Trend - {retailer_name}", "font": {"color": "#ccc", "size": 13}},
                                  yaxis_range=[0, 100])
 
         # Complaint vs Revenue correlation scatter plot
@@ -160,7 +173,7 @@ def layout():
                 size="margin_pct", color="margin_pct",
                 text="store_name",
                 color_continuous_scale=["#ef4444", "#eab308", "#22c55e"],
-                title="Complaints vs Revenue (Bubble size = Margin %)"
+                title=f"Complaints vs Revenue (Bubble size = Margin %) - {retailer_name}"
             )
             fig_corr.update_layout(**CHART_LAYOUT)
             fig_corr.update_traces(textposition="top center", textfont={"size": 10})
@@ -175,36 +188,33 @@ def layout():
             z=pivot.values, x=list(pivot.columns), y=list(pivot.index),
             colorscale=[[0, "#0d0d0d"], [0.5, "#f97316"], [1, "#ef4444"]], showscale=True
         ))
-        fig_hm.update_layout(**CHART_LAYOUT, title={"text": "Store × Complaint Heatmap (Red = High Complaints)", "font": {"color": "#ccc", "size": 13}})
+        fig_hm.update_layout(**CHART_LAYOUT, title={"text": f"Store × Complaint Heatmap (Red = High Complaints) - {retailer_name}", "font": {"color": "#ccc", "size": 13}})
         fig_hm.update_xaxes(tickangle=-30)
 
         return html.Div([
-            page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
+            html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
+                     style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
             html.Div([
-                html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_nps, config={"displayModeBar": False})],
-                             style={"flex": "1.5", "background": "#161616", "border": "1px solid #222", 
-                                    "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_pie, config={"displayModeBar": False})],
-                             style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
-                                    "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False})],
-                             style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
-                                    "borderRadius": "10px", "padding": "16px"}),
-                    html.Div([dcc.Graph(figure=fig_corr, config={"displayModeBar": False})],
-                             style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
-                                    "borderRadius": "10px", "padding": "16px"}),
-                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
-                html.Div([
-                    html.Div([dcc.Graph(figure=fig_hm, config={"displayModeBar": False})],
-                             style={"background": "#161616", "border": "1px solid #222", 
-                                    "borderRadius": "10px", "padding": "16px"})
-                ]),
-            ], style={"padding": "20px 28px"})
+                html.Div([dcc.Graph(figure=fig_nps, config={"displayModeBar": False})],
+                         style={"flex": "1.5", "background": "#161616", "border": "1px solid #222", 
+                                "borderRadius": "10px", "padding": "16px"}),
+                html.Div([dcc.Graph(figure=fig_pie, config={"displayModeBar": False})],
+                         style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                                "borderRadius": "10px", "padding": "16px"}),
+            ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
+            html.Div([
+                html.Div([dcc.Graph(figure=fig_trend, config={"displayModeBar": False})],
+                         style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                                "borderRadius": "10px", "padding": "16px"}),
+                html.Div([dcc.Graph(figure=fig_corr, config={"displayModeBar": False})],
+                         style={"flex": "1", "background": "#161616", "border": "1px solid #222", 
+                                "borderRadius": "10px", "padding": "16px"}),
+            ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
+            html.Div([
+                html.Div([dcc.Graph(figure=fig_hm, config={"displayModeBar": False})],
+                         style={"background": "#161616", "border": "1px solid #222", 
+                                "borderRadius": "10px", "padding": "16px"})
+            ]),
         ])
         
     except Exception as e:
@@ -212,15 +222,10 @@ def layout():
         import traceback
         traceback.print_exc()
         return html.Div([
-            page_header("Customer Sentiment", "NPS scores, complaint trends and satisfaction by store", "fa-face-smile"),
-            html.Div([
-                html.Div([
-                    html.Div("⚠️ Error Loading Data", style={
-                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
-                    }),
-                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
-                    html.Div("Please check that the database contains store data.",
-                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
-                ], style={"textAlign": "center", "padding": "60px"})
-            ], style={"padding": "20px 28px"})
-        ])
+            html.Div("⚠️ Error Loading Data", style={
+                "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
+            }),
+            html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
+            html.Div(f"Please check that the database contains store data for {retailer}.",
+                    style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
+        ], style={"textAlign": "center", "padding": "60px"})
