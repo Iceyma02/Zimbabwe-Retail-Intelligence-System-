@@ -1,4 +1,4 @@
-"""Inventory Monitor — Page 4 - Enhanced with High Sales/Low Stock Alerts"""
+"""Inventory Monitor — Page 4 with Retailer Filter"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
@@ -21,7 +21,6 @@ def layout():
     return html.Div([
         page_header("Inventory Monitor", "Real-time stock levels, expiry tracking and status alerts", "fa-boxes-stacked"),
         html.Div([
-            # Filters
             html.Div([
                 dcc.Dropdown(id="inv-store", options=store_options, value="ALL", clearable=False,
                              placeholder="Select store", style={"width": "200px"}),
@@ -35,29 +34,19 @@ def layout():
                                value="ALL", inline=True,
                                inputStyle={"marginRight": "4px", "accentColor": "#00c853"},
                                labelStyle={"marginRight": "16px", "color": "#ccc", "fontSize": "13px"})
-            ], style={"display": "flex", "alignItems": "center", "gap": "14px", "marginBottom": "20px",
-                      "flexWrap": "wrap"}),
-
-            # Summary KPIs
+            ], style={"display": "flex", "alignItems": "center", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
             html.Div(id="inv-kpis", style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
-
-            # Charts
             html.Div([
                 html.Div([
                     dcc.Graph(id="inv-status-chart", config={"displayModeBar": False}, style={"height": "260px"})
-                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222",
-                           "borderRadius": "10px", "padding": "16px"}),
+                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
                 html.Div([
                     dcc.Graph(id="inv-category-chart", config={"displayModeBar": False}, style={"height": "260px"})
-                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222",
-                           "borderRadius": "10px", "padding": "16px"}),
+                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
                 html.Div([
                     dcc.Graph(id="inv-expiry-chart", config={"displayModeBar": False}, style={"height": "260px"})
-                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222",
-                           "borderRadius": "10px", "padding": "16px"}),
+                ], style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
             ], style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
-
-            # High Sales / Low Stock Alert Section
             html.Div([
                 html.Div([
                     html.Div("⚠️ Reorder Priority Alerts", style={
@@ -68,15 +57,12 @@ def layout():
                 ], style={"background": "#1a1500", "border": "1px solid #f9731630",
                           "borderRadius": "10px", "padding": "16px", "marginBottom": "20px"})
             ], id="priority-alerts-section"),
-
-            # Inventory table
             html.Div([
                 html.Div("Stock Level Detail", style={"color": "#888", "fontSize": "11px",
                                                        "textTransform": "uppercase", "letterSpacing": "1px",
                                                        "marginBottom": "14px"}),
                 html.Div(id="inv-table", style={"maxHeight": "400px", "overflowY": "auto"})
             ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"})
-
         ], style={"padding": "20px 28px"})
     ])
 
@@ -91,29 +77,17 @@ def layout():
     Output("priority-alerts-section", "style"),
     Input("inv-store", "value"),
     Input("inv-category", "value"),
-    Input("inv-status-filter", "value")
+    Input("inv-status-filter", "value"),
+    Input("active-retailer", "data")
 )
-def update_inventory(store_id, category, status_filter):
+def update_inventory(store_id, category, status_filter, retailer):
     try:
-        df = get_inventory_simple()
+        df = get_inventory_simple(retailer)
         
         if df.empty:
             empty_fig = go.Figure()
-            empty_fig.update_layout(**CHART_LAYOUT, title={"text": "No inventory data available"})
+            empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"No inventory data for {retailer}"})
             return [], empty_fig, empty_fig, empty_fig, html.Div("No inventory data available"), [], {"display": "none"}
-        
-        # Get sales data for the last 30 days to identify high-selling products
-        sales_df = get_sales(30)
-        
-        # Calculate average daily sales per product
-        high_sellers = {}
-        if not sales_df.empty:
-            # Flatten product_id if needed
-            if "product_id" in sales_df.columns:
-                sales_df["product_id"] = sales_df["product_id"].apply(str)
-            avg_sales = sales_df.groupby("product_id")["units_sold"].mean().reset_index()
-            avg_sales.columns = ["product_id", "avg_daily_sales"]
-            high_sellers = avg_sales.set_index("product_id")["avg_daily_sales"].to_dict()
         
         # Apply filters
         if store_id != "ALL":
@@ -136,21 +110,26 @@ def update_inventory(store_id, category, status_filter):
         expiring_3d = len(df[df["days_until_expiry"] <= 3]) if "days_until_expiry" in df.columns else 0
         inv_value = (df["current_stock"] * df["unit_cost"]).sum()
         
-        # Identify reorder priority items (high sales + low stock)
+        # Get sales data for priority alerts
+        sales_df = get_sales(30, retailer)
+        high_sellers = {}
+        if not sales_df.empty:
+            avg_sales = sales_df.groupby("product_id")["units_sold"].mean().reset_index()
+            avg_sales.columns = ["product_id", "avg_daily_sales"]
+            high_sellers = avg_sales.set_index("product_id")["avg_daily_sales"].to_dict()
+        
         df["avg_daily_sales"] = df["product_id"].map(high_sellers).fillna(0)
         df["days_of_stock"] = df.apply(
             lambda r: r["current_stock"] / max(r["avg_daily_sales"], 0.5) if r["avg_daily_sales"] > 0 else 999, 
             axis=1
         )
         
-        # Items with high sales (>5 units/day) and low stock (<7 days)
         priority_items = df[
             (df["avg_daily_sales"] > 5) & 
             (df["days_of_stock"] < 7) & 
             (df["status"] != "GOOD")
         ].sort_values("days_of_stock").head(10)
         
-        # Create priority alerts
         priority_alerts = []
         for _, row in priority_items.iterrows():
             days = row["days_of_stock"]
@@ -248,7 +227,6 @@ def update_inventory(store_id, category, status_filter):
         table = html.Table([html.Thead(header_row), html.Tbody(rows)],
                            style={"width": "100%", "borderCollapse": "collapse"})
 
-        # Show/hide priority alerts section
         show_alerts = len(priority_alerts) > 0
         alerts_style = {"display": "block"} if show_alerts else {"display": "none"}
 
