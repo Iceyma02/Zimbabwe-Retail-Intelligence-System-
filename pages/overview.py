@@ -125,7 +125,7 @@ def update_overview(retailer, _):
                     style={"flex": 1, "minWidth": "150px"}),
         ]
         
-        # Enhanced Trend Chart
+        # Enhanced Trend Chart - FIXED: No duplicate hovermode
         trend_df = get_daily_trend(60, retailer)
         fig_trend = go.Figure()
         
@@ -150,19 +150,17 @@ def update_overview(retailer, _):
                 hovertemplate="<b>%{x}</b><br>Profit: $%{y:,.0f}<extra></extra>"
             ))
         
-        # Modern layout for trend chart
-        fig_trend.update_layout(
-            **CHART_LAYOUT,
-            title={
+        # Modern layout for trend chart - FIXED: Removed duplicate hovermode
+        trend_layout = CHART_LAYOUT.copy()
+        trend_layout.update({
+            "title": {
                 "text": f"60-Day Revenue & Profit Trend - {retailer_name}",
                 "font": {"color": "#fff", "size": 14, "family": "Syne"},
                 "x": 0.05,
                 "xanchor": "left"
             },
-            hovermode="x unified",
-            plot_bgcolor="#0d0d0d",
-            paper_bgcolor="rgba(0,0,0,0)",
-            xaxis={
+            "plot_bgcolor": "#0d0d0d",
+            "xaxis": {
                 "showgrid": True,
                 "gridcolor": "#1e1e1e",
                 "gridwidth": 0.5,
@@ -170,7 +168,7 @@ def update_overview(retailer, _):
                 "linecolor": "#2a2a2a",
                 "title": None
             },
-            yaxis={
+            "yaxis": {
                 "showgrid": True,
                 "gridcolor": "#1e1e1e",
                 "gridwidth": 0.5,
@@ -178,7 +176,7 @@ def update_overview(retailer, _):
                 "linecolor": "#2a2a2a",
                 "title": {"text": "Amount ($)", "font": {"color": "#888", "size": 11}}
             },
-            legend={
+            "legend": {
                 "orientation": "h",
                 "yanchor": "bottom",
                 "y": 1.02,
@@ -187,8 +185,9 @@ def update_overview(retailer, _):
                 "bgcolor": "rgba(0,0,0,0)",
                 "font": {"color": "#aaa"}
             },
-            margin={"t": 60, "b": 40, "l": 50, "r": 30}
-        )
+            "margin": {"t": 60, "b": 40, "l": 50, "r": 30}
+        })
+        fig_trend.update_layout(**trend_layout)
         
         # Enhanced Category Chart
         cat_df = get_category_sales(30, retailer)
@@ -222,28 +221,29 @@ def update_overview(retailer, _):
                 hovertemplate="<b>%{y}</b><br>Revenue: $%{x:,.0f}<extra></extra>"
             ))
             
-            fig_cat.update_layout(
-                **CHART_LAYOUT,
-                title={
+            category_layout = CHART_LAYOUT.copy()
+            category_layout.update({
+                "title": {
                     "text": f"Revenue by Category - {retailer_name}",
                     "font": {"color": "#fff", "size": 14, "family": "Syne"},
                     "x": 0.05,
                     "xanchor": "left"
                 },
-                xaxis={
+                "xaxis": {
                     "title": {"text": "Revenue ($)", "font": {"color": "#888", "size": 11}},
                     "tickprefix": "$",
                     "showgrid": True,
                     "gridcolor": "#1e1e1e"
                 },
-                yaxis={
+                "yaxis": {
                     "title": None,
                     "showgrid": False,
                     "categoryorder": "total ascending"
                 },
-                height=350,
-                margin={"t": 60, "b": 20, "l": 120, "r": 60}
-            )
+                "height": 350,
+                "margin": {"t": 60, "b": 20, "l": 120, "r": 60}
+            })
+            fig_cat.update_layout(**category_layout)
         else:
             fig_cat = go.Figure()
             fig_cat.update_layout(
@@ -304,7 +304,6 @@ def update_overview(retailer, _):
         if not inv.empty:
             critical = inv[inv["status"] == "CRITICAL"].head(6)
             for _, row in critical.iterrows():
-                days = row.get("days_until_expiry", 999)
                 alerts.append(html.Div([
                     html.Div([
                         html.Span("🔴", style={"fontSize": "18px", "marginRight": "12px"}),
