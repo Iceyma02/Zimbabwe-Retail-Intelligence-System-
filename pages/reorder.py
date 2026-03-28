@@ -1,141 +1,98 @@
-"""Reorder Optimizer — Page 8"""
-import dash
-from dash import html, dcc
-import plotly.graph_objects as go
+import streamlit as st
 import pandas as pd
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data.db import *
-from components.shared import *
+import numpy as np
+import plotly.express as px
 
-dash.register_page(__name__, path="/reorder", name="Reorder Optimizer", order=7)
+def load_inventory_data():
+    from app.data_loader import load_table
+    df = load_table("inventory")
+    if df is None or df.empty:
+        return pd.DataFrame()
+    return df
 
 def get_reorder_data():
-    inv = get_inventory_simple()
-    sales_30 = get_sales(30)
-
-    # Compute avg daily sales per product — result is a plain Series
-    avg_daily = sales_30.groupby("product_id")["units_sold"].mean()
-
-    # Map onto inventory using .map() — avoids alignment issues from merge
-    inv = inv.copy()
-    inv["avg_daily_sales"] = inv["product_id"].map(avg_daily).fillna(1.0)
-
-    # Use .values to force numpy arrays — avoids pandas alignment errors
-    inv["days_of_stock"] = (inv["current_stock"].values / inv["avg_daily_sales"].values).round(1)
-    inv["reorder_needed"] = inv["current_stock"].values <= inv["reorder_point"].values
-
-    needs = inv[inv["reorder_needed"]].copy()
-
-    if needs.empty:
-        return needs
-
-    # Urgency score — use .values throughout to avoid index alignment issues
-    days_vals = needs["days_of_stock"].values
-    stock_vals = needs["current_stock"].values
-    reorder_vals = needs["reorder_point"].values
-
-    needs["urgency_score"] = (
-        (1.0 / (days_vals + 0.1)) * 0.6 +
-        (reorder_vals / (stock_vals + 1)) * 0.4
-    )
-
-    return needs.sort_values("urgency_score", ascending=False).reset_index(drop=True)
-
+    """Calculate reorder needs with proper shape handling"""
+    inv = load_inventory_data()
+    if inv.empty:
+        return pd.DataFrame()
+    
+    # Reset index to avoid alignment issues
+    inv = inv.reset_index(drop=True)
+    
+    # Extract columns safely
+    current_stock = inv["current_stock"]
+    reorder_point = inv["reorder_point"]
+    
+    # Convert to 1D arrays
+    if isinstance(reorder_point, pd.DataFrame):
+        # If reorder_point has multiple columns, take first
+        reorder_point = reorder_point.iloc[:, 0]
+    elif isinstance(reorder_point, pd.Series) and reorder_point.dtype == 'object':
+        # If it contains arrays/list, extract first element
+        reorder_point = reorder_point.apply(
+            lambda x: x[0] if isinstance(x, (list, tuple, np.ndarray)) else x
+        )
+    
+    # Ensure both are numeric
+    current_stock = pd.to_numeric(current_stock, errors='coerce')
+    reorder_point = pd.to_numeric(reorder_point, errors='coerce')
+    
+    # Fill NaN values
+    current_stock = current_stock.fillna(0)
+    reorder_point = reorder_point.fillna(0)
+    
+    # Now compare (both should be 1D)
+    inv["reorder_needed"] = current_stock <= reorder_point
+    
+    return inv
 
 def layout():
+    st.subheader("🔄 Reorder Optimizer")
+    
     try:
-        needs_reorder = get_reorder_data()
-
-        total_need = len(needs_reorder)
-        critical_need = len(needs_reorder[needs_reorder["days_of_stock"] < 3]) if total_need > 0 else 0
-        total_order_value = float((needs_reorder["reorder_qty"] * needs_reorder["unit_cost"]).sum()) if total_need > 0 else 0
-
-        kpis = [
-            kpi_card("Items to Reorder", str(total_need), None, None, "fa-rotate", "#f97316"),
-            kpi_card("Critical (<3 days)", str(critical_need), None, None, "fa-fire", "#ef4444"),
-            kpi_card("Est. Order Value", f"${total_order_value:,.0f}", None, None, "fa-dollar-sign", "#3b82f6"),
-        ]
-
-        if total_need == 0:
-            fig = go.Figure()
-            fig.add_annotation(text="No items currently need reordering ✅",
-                               xref="paper", yref="paper", x=0.5, y=0.5,
-                               showarrow=False, font={"color": "#22c55e", "size": 16})
-            fig.update_layout(**CHART_LAYOUT)
-            table = html.Div("All stock levels are above reorder points.",
-                             style={"color": "#22c55e", "padding": "20px"})
+        inv = get_reorder_data()
+        
+        if inv.empty:
+            st.warning("No inventory data available")
+            return
+        
+        # Reorder summary
+        reorder_count = inv["reorder_needed"].sum()
+        total_products = len(inv)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Products Needing Reorder", reorder_count, 
+                     delta=f"{reorder_count/total_products*100:.0f}%")
+        with col2:
+            st.metric("Total Products", total_products)
+        with col3:
+            reorder_value = inv[inv["reorder_needed"]]["reorder_cost"].sum() if "reorder_cost" in inv.columns else 0
+            st.metric("Estimated Reorder Cost", f"${reorder_value:,.0f}")
+        
+        # Show reorder list
+        if reorder_count > 0:
+            st.subheader("📦 Items to Reorder")
+            reorder_list = inv[inv["reorder_needed"]].copy()
+            reorder_list = reorder_list.sort_values("current_stock", ascending=True)
+            
+            # Select relevant columns for display
+            display_cols = ["product_name", "store_name", "current_stock", "reorder_point", "reorder_quantity"]
+            available_cols = [col for col in display_cols if col in reorder_list.columns]
+            st.dataframe(reorder_list[available_cols], use_container_width=True)
         else:
-            top20 = needs_reorder.head(20)
-            days_list = top20["days_of_stock"].tolist()
-            fig = go.Figure(go.Bar(
-                x=top20["urgency_score"].round(2).tolist(),
-                y=top20["product_name"].str[:25].tolist(),
-                orientation="h",
-                marker_color=["#ef4444" if d < 3 else "#f97316" if d < 7 else "#eab308" for d in days_list]
-            ))
-            fig.update_layout(**CHART_LAYOUT,
-                              title={"text": "Top 20 Items by Reorder Urgency Score",
-                                     "font": {"color": "#ccc", "size": 13}},
-                              yaxis={"categoryorder": "total ascending"})
-
-            max_score = float(needs_reorder["urgency_score"].max()) or 1.0
-            headers = ["Product", "Store", "Stock", "Days Left", "Reorder Qty", "Order Value", "Urgency"]
-            header_row = html.Tr([
-                html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 10px",
-                                   "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
-                for h in headers
-            ])
-            rows = []
-            for _, row in needs_reorder.head(50).iterrows():
-                days = float(row["days_of_stock"])
-                score = float(row["urgency_score"])
-                urgency_color = "#ef4444" if days < 3 else "#f97316" if days < 7 else "#eab308"
-                order_val = float(row["reorder_qty"]) * float(row["unit_cost"])
-                bar_width = min(score / max_score * 100, 100)
-                rows.append(html.Tr([
-                    html.Td(str(row["product_name"])[:28], style={"color": "#ddd", "padding": "7px 10px", "fontSize": "12px"}),
-                    html.Td(str(row["store_name"]), style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
-                    html.Td(str(int(row["current_stock"])), style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
-                    html.Td(f"{days:.1f}d", style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
-                    html.Td(str(int(row["reorder_qty"])), style={"color": "#3b82f6", "padding": "7px 10px"}),
-                    html.Td(f"${order_val:,.0f}", style={"color": "#22c55e", "padding": "7px 10px"}),
-                    html.Td(html.Div(style={
-                        "width": f"{bar_width:.0f}%", "height": "6px",
-                        "background": urgency_color, "borderRadius": "3px"
-                    }), style={"padding": "7px 10px", "width": "80px"}),
-                ], style={"borderBottom": "1px solid #1a1a1a"}))
-
-            table = html.Table([html.Thead(header_row), html.Tbody(rows)],
-                               style={"width": "100%", "borderCollapse": "collapse"})
-
-        return html.Div([
-            page_header("Reorder Optimizer",
-                        "Smart reorder suggestions based on stock levels, demand and supplier lead times",
-                        "fa-rotate"),
-            html.Div([
-                html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
-                         style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
-                html.Div([dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "280px"})],
-                         style={"background": "#161616", "border": "1px solid #222",
-                                "borderRadius": "10px", "padding": "16px", "marginBottom": "14px"}),
-                html.Div([
-                    html.Div("Reorder Queue — Prioritised by Urgency", style={
-                        "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
-                        "letterSpacing": "1px", "marginBottom": "14px"
-                    }),
-                    table
-                ], style={"background": "#161616", "border": "1px solid #222",
-                           "borderRadius": "10px", "padding": "20px"}),
-            ], style={"padding": "20px 28px"})
-        ])
-
+            st.success("✅ All inventory levels are healthy!")
+        
+        # Visualize reorder needs by store
+        if "store_name" in inv.columns and inv["store_name"].notna().any():
+            store_reorder = inv.groupby("store_name")["reorder_needed"].sum().reset_index()
+            fig = px.bar(store_reorder, x="store_name", y="reorder_needed",
+                         title="Reorder Needs by Store",
+                         color="reorder_needed",
+                         color_continuous_scale="Reds")
+            fig.update_layout(xaxis_title="Store", yaxis_title="Items to Reorder")
+            st.plotly_chart(fig, use_container_width=True)
+            
     except Exception as e:
-        import traceback
-        return html.Div([
-            page_header("Reorder Optimizer", "Error loading data", "fa-rotate"),
-            html.Div([
-                html.Div(f"⚠️ Error: {str(e)}", style={"color": "#ef4444", "padding": "20px"}),
-                html.Pre(traceback.format_exc(), style={"color": "#888", "fontSize": "11px", "padding": "20px"})
-            ])
-        ])
+        st.error(f"Error loading data: {e}")
+        st.write("Debug info: Check data structure")
