@@ -208,7 +208,7 @@ zimretail-iq/
 
 ## 👤 Author
 
-**Anesu Manjengwa (Icey)**  
+**Anesu Manjengwa**  
 Full-Stack Developer | Zimbabwe 🇿🇼  
 
 [GitHub](https://github.com/Iceyma02) · [LinkedIn](https://www.linkedin.com/in/anesu-manjengwa-684766247) · [Portfolio](https://anesumanjengwa.vercel.app)
