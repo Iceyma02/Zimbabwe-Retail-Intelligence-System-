@@ -24,8 +24,11 @@ def query(sql, params=None):
         conn.close()
 
 
-def get_stores():
-    return query("SELECT * FROM stores")
+def get_stores(retailer_filter=None):
+    sql = "SELECT * FROM stores"
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
 def get_products():
@@ -36,20 +39,22 @@ def get_suppliers():
     return query("SELECT * FROM suppliers")
 
 
-def get_sales(days=90):
-    return query(f"""
+def get_sales(days=90, retailer_filter=None):
+    sql = f"""
         SELECT s.*, p.name as product_name, p.category, p.brand,
-               st.name as store_name, st.city
+               st.name as store_name, st.city, st.retailer_id
         FROM sales s
         JOIN products p ON s.product_id = p.product_id
         JOIN stores st ON s.store_id = st.store_id
         WHERE s.date >= date('now', '-{days} days')
-    """)
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" AND st.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
-def get_inventory_simple():
-    """Returns inventory with ALL product fields including reorder_point and reorder_qty"""
-    return query("""
+def get_inventory_simple(retailer_filter=None):
+    sql = """
         SELECT i.*, 
                p.name as product_name, 
                p.category, 
@@ -65,30 +70,41 @@ def get_inventory_simple():
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
-    """)
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE s.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
-def get_inventory():
-    """Alias for get_inventory_simple for compatibility"""
-    return get_inventory_simple()
+def get_inventory(retailer_filter=None):
+    return get_inventory_simple(retailer_filter)
 
 
-def get_supplier_credit():
+def get_supplier_credit(retailer_filter=None):
+    # Supplier credit is supplier-level, not retailer-specific
     return query("SELECT * FROM supplier_credit")
 
 
-def get_staff():
-    return query("""
-        SELECT sf.*, s.city, s.size_sqm
-        FROM staff sf JOIN stores s ON sf.store_id = s.store_id
-    """)
+def get_staff(retailer_filter=None):
+    sql = """
+        SELECT sf.*, s.city, s.size_sqm, s.retailer_id
+        FROM staff sf 
+        JOIN stores s ON sf.store_id = s.store_id
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE s.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
-def get_shrinkage():
-    return query("""
-        SELECT sh.*, s.name as store_name, s.city
-        FROM shrinkage sh JOIN stores s ON sh.store_id = s.store_id
-    """)
+def get_shrinkage(retailer_filter=None):
+    sql = """
+        SELECT sh.*, s.name as store_name, s.city, s.retailer_id
+        FROM shrinkage sh 
+        JOIN stores s ON sh.store_id = s.store_id
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE s.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
 def get_promotions():
@@ -99,47 +115,48 @@ def get_competitor_prices():
     return query("SELECT * FROM competitor_prices")
 
 
-def get_store_costs():
-    return query("""
-        SELECT sc.*, s.name as store_name, s.city
-        FROM store_costs sc JOIN stores s ON sc.store_id = s.store_id
-    """)
+def get_store_costs(retailer_filter=None):
+    sql = """
+        SELECT sc.*, s.name as store_name, s.city, s.retailer_id
+        FROM store_costs sc 
+        JOIN stores s ON sc.store_id = s.store_id
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE s.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
-def get_logistics():
-    """Returns logistics data with safe defaults"""
-    df = query("SELECT * FROM logistics")
-    # Add default values for missing columns if needed
-    if not df.empty:
-        if 'delay_days' not in df.columns:
-            df['delay_days'] = 0
-        if 'expected_delivery' not in df.columns:
-            df['expected_delivery'] = df.get('order_date', 'N/A')
-        if 'order_id' not in df.columns:
-            df['order_id'] = [f"ORD-{i+1:04d}" for i in range(len(df))]
-    return df
+def get_logistics(retailer_filter=None):
+    sql = "SELECT * FROM logistics"
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" WHERE retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
 def get_economic_indicators():
     return query("SELECT * FROM economic_indicators ORDER BY date DESC")
 
 
-def get_national_kpis(days=30):
-    return query(f"""
+def get_national_kpis(days=30, retailer_filter=None):
+    sql = f"""
         SELECT
             COALESCE(SUM(revenue), 0) as total_revenue,
             COALESCE(SUM(profit), 0) as total_profit,
             COALESCE(SUM(units_sold), 0) as total_units,
             COUNT(DISTINCT store_id) as active_stores,
             COALESCE(ROUND(SUM(profit)*100.0/NULLIF(SUM(revenue),0), 1), 0) as margin_pct
-        FROM sales
-        WHERE date >= date('now', '-{days} days')
-    """)
+        FROM sales s
+        JOIN stores st ON s.store_id = st.store_id
+        WHERE s.date >= date('now', '-{days} days')
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" AND st.retailer_id = '{retailer_filter}'"
+    return query(sql)
 
 
-def get_store_revenue_summary(days=30):
-    return query(f"""
-        SELECT s.store_id, s.name as store_name, s.city, s.lat, s.lng,
+def get_store_revenue_summary(days=30, retailer_filter=None):
+    sql = f"""
+        SELECT s.store_id, s.name as store_name, s.city, s.lat, s.lng, s.retailer_id,
                COALESCE(ROUND(SUM(sa.revenue), 2), 0) as total_revenue,
                COALESCE(ROUND(SUM(sa.profit), 2), 0) as total_profit,
                COALESCE(SUM(sa.units_sold), 0) as total_units,
@@ -148,26 +165,37 @@ def get_store_revenue_summary(days=30):
         LEFT JOIN sales sa ON s.store_id = sa.store_id AND sa.date >= date('now', '-{days} days')
         GROUP BY s.store_id
         ORDER BY total_revenue DESC
-    """)
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql = sql.replace("FROM stores s", f"FROM stores s WHERE s.retailer_id = '{retailer_filter}'")
+    return query(sql)
 
 
-def get_category_sales(days=30):
-    return query(f"""
+def get_category_sales(days=30, retailer_filter=None):
+    sql = f"""
         SELECT p.category,
                COALESCE(ROUND(SUM(s.revenue), 2), 0) as revenue,
                COALESCE(SUM(s.units_sold), 0) as units
         FROM sales s 
         JOIN products p ON s.product_id = p.product_id
+        JOIN stores st ON s.store_id = st.store_id
         WHERE s.date >= date('now', '-{days} days')
-        GROUP BY p.category ORDER BY revenue DESC
-    """)
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" AND st.retailer_id = '{retailer_filter}'"
+    sql += " GROUP BY p.category ORDER BY revenue DESC"
+    return query(sql)
 
 
-def get_daily_trend(days=60):
-    return query(f"""
+def get_daily_trend(days=60, retailer_filter=None):
+    sql = f"""
         SELECT date, COALESCE(ROUND(SUM(revenue), 2), 0) as revenue,
                COALESCE(ROUND(SUM(profit), 2), 0) as profit
-        FROM sales
-        WHERE date >= date('now', '-{days} days')
-        GROUP BY date ORDER BY date
-    """)
+        FROM sales s
+        JOIN stores st ON s.store_id = st.store_id
+        WHERE s.date >= date('now', '-{days} days')
+    """
+    if retailer_filter and retailer_filter != "ALL":
+        sql += f" AND st.retailer_id = '{retailer_filter}'"
+    sql += " GROUP BY date ORDER BY date"
+    return query(sql)
