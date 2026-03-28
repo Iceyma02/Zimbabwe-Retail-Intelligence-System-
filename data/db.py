@@ -66,10 +66,12 @@ def get_inventory_simple(retailer_filter=None):
                p.shelf_life_days,
                s.name as store_name, 
                s.city,
-               s.retailer_id
+               s.retailer_id,
+               sup.name as supplier_name
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN stores s ON i.store_id = s.store_id
+        LEFT JOIN suppliers sup ON p.supplier = sup.name
     """
     if retailer_filter and retailer_filter != "ALL":
         sql += f" WHERE s.retailer_id = '{retailer_filter}'"
@@ -81,7 +83,6 @@ def get_inventory(retailer_filter=None):
 
 
 def get_supplier_credit(retailer_filter=None):
-    # Supplier credit is supplier-level, not retailer-specific
     return query("SELECT * FROM supplier_credit")
 
 
@@ -140,11 +141,11 @@ def get_economic_indicators():
 def get_national_kpis(days=30, retailer_filter=None):
     sql = f"""
         SELECT
-            COALESCE(SUM(revenue), 0) as total_revenue,
-            COALESCE(SUM(profit), 0) as total_profit,
-            COALESCE(SUM(units_sold), 0) as total_units,
-            COUNT(DISTINCT store_id) as active_stores,
-            COALESCE(ROUND(SUM(profit)*100.0/NULLIF(SUM(revenue),0), 1), 0) as margin_pct
+            COALESCE(SUM(s.revenue), 0) as total_revenue,
+            COALESCE(SUM(s.profit), 0) as total_profit,
+            COALESCE(SUM(s.units_sold), 0) as total_units,
+            COUNT(DISTINCT s.store_id) as active_stores,
+            COALESCE(ROUND(SUM(s.profit)*100.0/NULLIF(SUM(s.revenue),0), 1), 0) as margin_pct
         FROM sales s
         JOIN stores st ON s.store_id = st.store_id
         WHERE s.date >= date('now', '-{days} days')
@@ -189,13 +190,13 @@ def get_category_sales(days=30, retailer_filter=None):
 
 def get_daily_trend(days=60, retailer_filter=None):
     sql = f"""
-        SELECT date, COALESCE(ROUND(SUM(revenue), 2), 0) as revenue,
-               COALESCE(ROUND(SUM(profit), 2), 0) as profit
+        SELECT s.date, COALESCE(ROUND(SUM(s.revenue), 2), 0) as revenue,
+               COALESCE(ROUND(SUM(s.profit), 2), 0) as profit
         FROM sales s
         JOIN stores st ON s.store_id = st.store_id
         WHERE s.date >= date('now', '-{days} days')
     """
     if retailer_filter and retailer_filter != "ALL":
         sql += f" AND st.retailer_id = '{retailer_filter}'"
-    sql += " GROUP BY date ORDER BY date"
+    sql += " GROUP BY s.date ORDER BY s.date"
     return query(sql)
