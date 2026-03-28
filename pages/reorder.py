@@ -76,7 +76,7 @@ def get_reorder_data(retailer):
         
         inv = inv.reset_index(drop=True)
         
-        for col in ["product_id", "product_name", "store_name", "supplier_name"]:
+        for col in ["product_id", "product_name", "store_name"]:
             if col in inv.columns:
                 if isinstance(inv[col], pd.DataFrame):
                     inv[col] = inv[col].iloc[:, 0].apply(flatten_string)
@@ -119,19 +119,18 @@ def get_reorder_data(retailer):
         df["forecast_daily"] = df["forecast_daily"].clip(lower=0.5)
         df["days_of_stock"] = (df["current_stock"] / df["forecast_daily"]).round(1)
         df["days_of_stock"] = df["days_of_stock"].replace([float('inf'), -float('inf')], 999).fillna(999)
-        df["supplier_risk"] = df["supplier_name"].map(supplier_risk).fillna(0)
-        df["reorder_needed"] = (df["current_stock"] <= df["reorder_point"]) & (df["supplier_risk"] < 1.0)
+        df["reorder_needed"] = df["current_stock"] <= df["reorder_point"]
         needs_reorder = df[df["reorder_needed"]].copy()
         
         if needs_reorder.empty:
             return needs_reorder
         
+        # Calculate urgency score
         needs_reorder["stock_urgency"] = 1 / (needs_reorder["days_of_stock"] + 0.5)
         needs_reorder["reorder_urgency"] = needs_reorder["reorder_point"] / (needs_reorder["current_stock"] + 1)
         needs_reorder["urgency_score"] = (
-            needs_reorder["stock_urgency"] * 0.5 +
-            needs_reorder["reorder_urgency"] * 0.3 +
-            (1 - needs_reorder["supplier_risk"]) * 0.2
+            needs_reorder["stock_urgency"] * 0.6 +
+            needs_reorder["reorder_urgency"] * 0.4
         )
         needs_reorder["urgency_score"] = needs_reorder["urgency_score"].replace([float('inf'), -float('inf')], 1.0).fillna(1.0)
         
@@ -173,7 +172,7 @@ def update_reorder(retailer):
                     html.Div("⚠️ Warning: The following suppliers have stopped trading", 
                              style={"color": "#ef4444", "fontWeight": "600", "marginBottom": "8px"}),
                     html.Div(", ".join(stopped_suppliers[:5]), style={"color": "#888", "fontSize": "12px"}),
-                    html.Div("No items from these suppliers are being recommended for reorder.",
+                    html.Div("Consider alternative suppliers for products from these vendors.",
                              style={"color": "#666", "fontSize": "12px", "marginTop": "8px"})
                 ], style={"background": "#2d0a0a", "border": "1px solid #ef444430", 
                           "borderRadius": "8px", "padding": "12px", "marginBottom": "16px"})
@@ -196,13 +195,11 @@ def update_reorder(retailer):
         total_need = len(needs_reorder)
         critical_need = len(needs_reorder[needs_reorder["days_of_stock"] < 3])
         total_order_value = (needs_reorder["reorder_qty"] * needs_reorder["unit_cost"]).sum()
-        blocked_items = len(needs_reorder[needs_reorder["supplier_risk"] >= 1.0]) if "supplier_risk" in needs_reorder.columns else 0
 
         kpis = [
             kpi_card("Items to Reorder", str(total_need), None, None, "fa-rotate", "#f97316"),
             kpi_card("Critical (<3 days)", str(critical_need), None, None, "fa-fire", "#ef4444"),
             kpi_card("Est. Order Value", f"${total_order_value:,.0f}", None, None, "fa-dollar-sign", "#3b82f6"),
-            kpi_card("Blocked by Supplier", str(blocked_items), None, None, "fa-ban", "#ef4444"),
         ]
 
         top20 = needs_reorder.head(20)
@@ -212,8 +209,7 @@ def update_reorder(retailer):
             orientation="h",
             marker_color=["#ef4444" if d < 3 else "#f97316" if d < 7 else "#eab308"
                           for d in top20["days_of_stock"]],
-            text=[f"{d:.0f}d left" + (f" | Risk: {s:.0%}" if s > 0 else "") 
-                  for d, s in zip(top20["days_of_stock"], top20["supplier_risk"])],
+            text=top20["days_of_stock"].apply(lambda x: f"{x:.0f}d left"),
             textposition="outside",
             textfont={"size": 10}
         ))
@@ -226,7 +222,7 @@ def update_reorder(retailer):
         })
         fig.update_layout(**chart_layout)
 
-        headers = ["Product", "Store", "Supplier", "Current Stock", "Days Left", "Reorder Qty", "Supplier Risk", "Order Value", "Urgency"]
+        headers = ["Product", "Store", "Current Stock", "Days Left", "Reorder Qty", "Order Value", "Urgency"]
         header_row = html.Tr([html.Th(h, style={
             "color": "#666", "fontSize": "11px", "padding": "8px 10px",
             "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"
@@ -241,28 +237,18 @@ def update_reorder(retailer):
             order_val = row["reorder_qty"] * row["unit_cost"]
             urgency_pct = min(row["urgency_score"] / max_score * 100, 100)
             
-            risk = row.get("supplier_risk", 0)
-            risk_color = "#ef4444" if risk > 0.8 else "#f97316" if risk > 0.4 else "#22c55e"
-            risk_text = "STOPPED" if risk >= 1.0 else "Limited" if risk > 0.4 else "Active"
-            
             rows.append(html.Tr([
                 html.Td(row["product_name"][:28], style={"color": "#ddd", "padding": "7px 10px", "fontSize": "12px"}),
                 html.Td(str(row["store_name"])[:20], style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
-                html.Td(str(row.get("supplier_name", "Unknown"))[:15], style={"color": "#aaa", "padding": "7px 10px", "fontSize": "11px"}),
                 html.Td(str(row["current_stock"]), style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
                 html.Td(f"{days:.0f}d", style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
                 html.Td(str(int(row["reorder_qty"])), style={"color": "#3b82f6", "padding": "7px 10px"}),
-                html.Td(html.Span(risk_text, style={
-                    "background": f"{risk_color}20", "color": risk_color,
-                    "padding": "2px 8px", "borderRadius": "12px", "fontSize": "10px"
-                }), style={"padding": "7px 10px"}),
                 html.Td(f"${order_val:,.0f}", style={"color": "#22c55e", "padding": "7px 10px"}),
                 html.Td(html.Div(style={
                     "width": f"{urgency_pct:.0f}%",
                     "height": "6px", "background": urgency_color, "borderRadius": "3px"
                 }), style={"padding": "7px 10px", "width": "80px"}),
-            ], style={"borderBottom": "1px solid #1a1a1a",
-                      "background": "#1a0a0a" if risk >= 0.8 else "transparent"}))
+            ], style={"borderBottom": "1px solid #1a1a1a"}))
         
         table = html.Table([html.Thead(header_row), html.Tbody(rows)],
                           style={"width": "100%", "borderCollapse": "collapse"})
