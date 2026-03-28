@@ -5,6 +5,7 @@ Generic multi-retailer analytics system
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
+import os
 
 app = dash.Dash(
     __name__,
@@ -20,44 +21,16 @@ app = dash.Dash(
 
 server = app.server
 
+# Retailers with logo paths
 RETAILERS = [
-    {"label": "📍 All Retailers",     "value": "ALL",     "color": "#00c853"},
-    {"label": "🛒 TM Pick n Pay",     "value": "PNP",     "color": "#e31837"},
-    {"label": "🛍️  OK Zimbabwe",       "value": "OK",      "color": "#ff6d00"},
-    {"label": "🏪 Spar Zimbabwe",      "value": "SPAR",    "color": "#007b40"},
-    {"label": "🏬 SaiMart",           "value": "SAIMART", "color": "#1565c0"},
-    {"label": "🛒 Choppies Zimbabwe",  "value": "CHOPPIES","color": "#f9a825"},
-]
-# In app.py, update RETAILERS with logo paths
-RETAILERS = [
-    {"label": "📍 All Retailers", "value": "ALL", "color": "#00c853", "logo": None},
-    {"label": "🛒 TM Pick n Pay", "value": "PNP", "color": "#e31837", "logo": "/assets/logos/pnp.png"},
-    {"label": "🛍️  OK Zimbabwe", "value": "OK", "color": "#ff6d00", "logo": "/assets/logos/ok.png"},
-    {"label": "🏪 Spar Zimbabwe", "value": "SPAR", "color": "#007b40", "logo": "/assets/logos/spar.png"},
-    {"label": "🏬 SaiMart", "value": "SAIMART", "color": "#1565c0", "logo": "/assets/logos/saimart.png"},
-    {"label": "🛒 Choppies Zimbabwe", "value": "CHOPPIES", "color": "#f9a825", "logo": "/assets/logos/choppies.png"},
+    {"label": "All Retailers", "value": "ALL", "color": "#00c853", "logo": None, "icon": "📍"},
+    {"label": "TM Pick n Pay", "value": "PNP", "color": "#e31837", "logo": "/assets/logos/pnp.png", "icon": "🛒"},
+    {"label": "OK Zimbabwe", "value": "OK", "color": "#ff6d00", "logo": "/assets/logos/ok.png", "icon": "🛍️"},
+    {"label": "Spar Zimbabwe", "value": "SPAR", "color": "#007b40", "logo": "/assets/logos/spar.png", "icon": "🏪"},
+    {"label": "SaiMart", "value": "SAIMART", "color": "#1565c0", "logo": "/assets/logos/saimart.png", "icon": "🏬"},
+    {"label": "Choppies Zimbabwe", "value": "CHOPPIES", "color": "#f9a825", "logo": "/assets/logos/choppies.png", "icon": "🛒"},
 ]
 
-# Update the dropdown to use custom option rendering
-html.Div([
-    html.Div("Active Retailer", style={"color": "#555", "fontSize": "9px",
-                                        "textTransform": "uppercase", "letterSpacing": "1px",
-                                        "marginBottom": "6px"}),
-    dcc.Dropdown(
-        id="retailer-switcher",
-        options=[
-            {
-                "label": html.Div([
-                    html.Img(src=r["logo"], style={"height": "16px", "marginRight": "8px"}) if r["logo"] else None,
-                    html.Span(r["label"])
-                ], style={"display": "flex", "alignItems": "center"}) if r["logo"] else r["label"],
-                "value": r["value"]
-            } for r in RETAILERS
-        ],
-        value="ALL", clearable=False,
-        style={"fontSize": "12px"}
-    ),
-], style={"padding": "10px 10px 10px", "borderBottom": "1px solid #1e1e1e"}),
 NAV_ITEMS = [
     {"icon": "fa-gauge-high",          "label": "National Overview",    "href": "/"},
     {"icon": "fa-map-location-dot",    "label": "Map View",             "href": "/map"},
@@ -77,6 +50,31 @@ NAV_ITEMS = [
     {"icon": "fa-globe-africa",        "label": "Market Watch",         "href": "/market-watch"},
     {"icon": "fa-file-pdf",            "label": "Executive Reports",    "href": "/reports"},
 ]
+
+# Create custom dropdown options with logos
+def create_dropdown_options():
+    options = []
+    for r in RETAILERS:
+        if r["logo"]:
+            # Check if logo file exists
+            logo_path = os.path.join("assets", "logos", os.path.basename(r["logo"]))
+            if os.path.exists(logo_path):
+                label = html.Div([
+                    html.Img(src=r["logo"], style={
+                        "height": "20px", 
+                        "width": "20px", 
+                        "marginRight": "10px",
+                        "objectFit": "contain"
+                    }),
+                    html.Span(r["label"], style={"fontWeight": "500"})
+                ], style={"display": "flex", "alignItems": "center"})
+            else:
+                label = f"{r['icon']} {r['label']}"
+        else:
+            label = f"{r['icon']} {r['label']}"
+        
+        options.append({"label": label, "value": r["value"]})
+    return options
 
 sidebar = html.Div([
     html.Div([
@@ -107,7 +105,7 @@ sidebar = html.Div([
                                             "marginBottom": "6px"}),
         dcc.Dropdown(
             id="retailer-switcher",
-            options=[{"label": r["label"], "value": r["value"]} for r in RETAILERS],
+            options=create_dropdown_options(),
             value="ALL", clearable=False,
             style={"fontSize": "12px"}
         ),
@@ -183,21 +181,51 @@ def update_retailer_banner(retailer_val):
     color = retailer["color"]
     if retailer_val == "ALL":
         return html.Div(), retailer_val
-    banner = html.Div([
-        html.Span(retailer["label"],
-                  style={"color": color, "fontWeight": "700", "fontSize": "12px"}),
-        html.Span(" · Showing data for this retailer's stores",
-                  style={"color": "#555", "fontSize": "11px", "marginLeft": "8px"}),
-    ], style={
-        "background": f"{color}0d", "borderBottom": f"1px solid {color}20",
-        "padding": "7px 28px", "display": "flex", "alignItems": "center"
-    })
+    
+    # Create banner with logo if available
+    if retailer["logo"]:
+        logo_path = os.path.join("assets", "logos", os.path.basename(retailer["logo"]))
+        if os.path.exists(logo_path):
+            banner = html.Div([
+                html.Img(src=retailer["logo"], style={
+                    "height": "24px", "width": "24px", "marginRight": "10px", "objectFit": "contain"
+                }),
+                html.Span(retailer["label"],
+                          style={"color": color, "fontWeight": "700", "fontSize": "12px"}),
+                html.Span(" · Showing data for this retailer's stores",
+                          style={"color": "#555", "fontSize": "11px", "marginLeft": "8px"}),
+            ], style={
+                "background": f"{color}0d", "borderBottom": f"1px solid {color}20",
+                "padding": "7px 28px", "display": "flex", "alignItems": "center"
+            })
+        else:
+            banner = html.Div([
+                html.Span(retailer["label"],
+                          style={"color": color, "fontWeight": "700", "fontSize": "12px"}),
+                html.Span(" · Showing data for this retailer's stores",
+                          style={"color": "#555", "fontSize": "11px", "marginLeft": "8px"}),
+            ], style={
+                "background": f"{color}0d", "borderBottom": f"1px solid {color}20",
+                "padding": "7px 28px", "display": "flex", "alignItems": "center"
+            })
+    else:
+        banner = html.Div([
+            html.Span(retailer["label"],
+                      style={"color": color, "fontWeight": "700", "fontSize": "12px"}),
+            html.Span(" · Showing data for this retailer's stores",
+                      style={"color": "#555", "fontSize": "11px", "marginLeft": "8px"}),
+        ], style={
+            "background": f"{color}0d", "borderBottom": f"1px solid {color}20",
+            "padding": "7px 28px", "display": "flex", "alignItems": "center"
+        })
     return banner, retailer_val
 
 
 if __name__ == "__main__":
     import os
-    if not os.path.exists("data/zimretail_iq.db"):  # ← CORRECT filename
+    # Check if database exists, generate if not
+    db_path = "data/zimretail_iq.db"
+    if not os.path.exists(db_path):
         print("⚠️  Database not found. Running data generator first...")
         from data.generate_data import save_to_sqlite
         save_to_sqlite()
