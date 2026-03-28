@@ -53,12 +53,39 @@ def layout():
         # Ensure value_usd is numeric
         df_shrink["value_usd"] = pd.to_numeric(df_shrink["value_usd"], errors='coerce').fillna(0)
         
-        # Create a clean DataFrame with flattened data
+        # Create a clean DataFrame by extracting individual columns
         df_clean = pd.DataFrame()
-        df_clean["store_name"] = df_shrink["store_name"] if "store_name" in df_shrink.columns else "Unknown"
-        df_clean["month"] = df_shrink["month"] if "month" in df_shrink.columns else "Unknown"
-        df_clean["cause"] = df_shrink["cause"] if "cause" in df_shrink.columns else "Unknown"
-        df_clean["value_usd"] = df_shrink["value_usd"]
+        
+        # Extract store_name - ensure it's a Series
+        if "store_name" in df_shrink.columns:
+            # If it's a DataFrame with multiple columns, take the first column
+            if isinstance(df_shrink["store_name"], pd.DataFrame):
+                df_clean["store_name"] = df_shrink["store_name"].iloc[:, 0].reset_index(drop=True)
+            else:
+                df_clean["store_name"] = df_shrink["store_name"].reset_index(drop=True)
+        else:
+            df_clean["store_name"] = "Unknown"
+        
+        # Extract month
+        if "month" in df_shrink.columns:
+            if isinstance(df_shrink["month"], pd.DataFrame):
+                df_clean["month"] = df_shrink["month"].iloc[:, 0].reset_index(drop=True)
+            else:
+                df_clean["month"] = df_shrink["month"].reset_index(drop=True)
+        else:
+            df_clean["month"] = "Unknown"
+        
+        # Extract cause
+        if "cause" in df_shrink.columns:
+            if isinstance(df_shrink["cause"], pd.DataFrame):
+                df_clean["cause"] = df_shrink["cause"].iloc[:, 0].reset_index(drop=True)
+            else:
+                df_clean["cause"] = df_shrink["cause"].reset_index(drop=True)
+        else:
+            df_clean["cause"] = "Unknown"
+        
+        # Add value_usd
+        df_clean["value_usd"] = df_shrink["value_usd"].reset_index(drop=True)
         
         # Calculate totals
         total_loss = df_clean["value_usd"].sum()
