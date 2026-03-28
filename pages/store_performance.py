@@ -75,7 +75,8 @@ def update_performance(days, retailer):
     ))
     retailer_name = retailer if retailer != "ALL" else "All Retailers"
     fig_bar.update_layout(**CHART_LAYOUT, title={"text": f"Revenue by Store — Last {days} Days ({retailer_name})", "font": {"color": "#ccc", "size": 13}})
-    fig_bar.update_yaxis(tickprefix="$")
+    # FIXED: Use update_yaxes instead of update_yaxis
+    fig_bar.update_yaxes(tickprefix="$")
 
     # Margin chart
     df_sorted_margin = df.sort_values("margin_pct", ascending=True).reset_index(drop=True)
@@ -88,7 +89,7 @@ def update_performance(days, retailer):
         textposition="outside"
     ))
     fig_margin.update_layout(**CHART_LAYOUT, title={"text": "Profit Margin % by Store", "font": {"color": "#ccc", "size": 13}})
-    fig_margin.update_xaxis(tickprefix="", ticksuffix="%")
+    fig_margin.update_xaxes(ticksuffix="%")
 
     # Scatter
     fig_scatter = px.scatter(
@@ -101,8 +102,8 @@ def update_performance(days, retailer):
     fig_scatter.update_traces(textposition="top center", textfont={"size": 10, "color": "#aaa"})
     fig_scatter.update_layout(**CHART_LAYOUT, 
                                title={"text": "Revenue vs Profit (bubble = units)", "font": {"color": "#ccc", "size": 13}})
-    fig_scatter.update_xaxis(tickprefix="$")
-    fig_scatter.update_yaxis(tickprefix="$")
+    fig_scatter.update_xaxes(tickprefix="$")
+    fig_scatter.update_yaxes(tickprefix="$")
 
     # Table
     headers = ["Store", "Retailer", "City", "Revenue", "Profit", "Units", "Margin", "Rank"]
