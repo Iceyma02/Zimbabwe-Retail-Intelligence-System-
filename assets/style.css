@@ -51,3 +51,25 @@ tr:hover td { background: rgba(255,255,255,0.02) !important; }
 
 /* Loading spinner override */
 ._dash-loading { color: #00c853 !important; }
+
+/* Logo styling */
+.retailer-logo {
+    height: 20px;
+    width: 20px;
+    object-fit: contain;
+    margin-right: 8px;
+}
+
+/* Dropdown option styling */
+.Select-option {
+    display: flex;
+    align-items: center;
+}
+
+/* Retailer banner logo */
+.retailer-banner-logo {
+    height: 24px;
+    width: 24px;
+    object-fit: contain;
+    margin-right: 10px;
+}
