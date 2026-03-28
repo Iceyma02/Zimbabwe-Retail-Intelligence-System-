@@ -1,81 +1,221 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
+"""Supplier Credit & Risk — Page 10"""
+import dash
+from dash import html, dcc
 import plotly.graph_objects as go
+import pandas as pd
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from data.db import *
+from components.shared import *
 
-# Define CHART_LAYOUT without yaxis to avoid duplication
-CHART_LAYOUT = {
-    "template": "plotly_white",
-    "height": 500,
-    "margin": dict(l=40, r=40, t=40, b=40)
-}
+dash.register_page(__name__, path="/supplier-credit", name="Supplier Credit", order=9)
 
-def load_supplier_credit_data():
-    from app.data_loader import load_table
-    df = load_table("supplier_credit")
-    if df is None or df.empty:
-        return pd.DataFrame()
-    return df
+def compute_priority_score(row):
+    status_score = {"STOPPED": 1.0, "LIMITED_CREDIT": 0.6, "ACTIVE": 0.1}.get(row.get("supplier_status", "ACTIVE"), 0.2)
+    overdue_score = min(row.get("overdue_days", 0) / 60, 1.0)
+    outstanding_pct = row.get("outstanding_usd", 0) / max(row.get("amount_usd", 1), 1)
+    return round((overdue_score * 0.4 + status_score * 0.4 + outstanding_pct * 0.2), 3)
 
 def layout():
-    st.subheader("💳 Supplier Credit Management")
-    
-    df = load_supplier_credit_data()
-    if df.empty:
-        st.warning("No supplier credit data available")
-        return
-    
-    df = df.reset_index(drop=True)
-    
-    # Credit status by supplier
     try:
+        df = get_supplier_credit()
+        
+        if df.empty:
+            return html.Div([
+                page_header("Supplier Credit & Risk", "Accounts payable cross-referenced with stock urgency — who to pay first", "fa-file-invoice-dollar"),
+                html.Div([
+                    html.Div("No supplier credit data available", 
+                            style={"textAlign": "center", "padding": "60px", "color": "#888"})
+                ], style={"padding": "20px 28px"})
+            ])
+        
+        df["priority_score"] = df.apply(compute_priority_score, axis=1)
+        df = df.sort_values("priority_score", ascending=False)
+
+        active_count = len(df[df["supplier_status"] == "ACTIVE"]["supplier_name"].unique())
+        limited_count = len(df[df["supplier_status"] == "LIMITED_CREDIT"]["supplier_name"].unique())
+        stopped_count = len(df[df["supplier_status"] == "STOPPED"]["supplier_name"].unique())
+        total_suppliers = active_count + limited_count + stopped_count
+        confidence = int(((active_count * 1.0 + limited_count * 0.4) / max(total_suppliers, 1)) * 100)
+        conf_color = "#22c55e" if confidence > 70 else "#eab308" if confidence > 45 else "#ef4444"
+
+        confidence_block = html.Div([
+            html.Div([
+                html.Div([
+                    html.Div("SUPPLIER CONFIDENCE INDEX", style={"color": "#888", "fontSize": "11px", "letterSpacing": "1px"}),
+                    html.Div([
+                        html.Span(f"{confidence}", style={"fontSize": "52px", "fontWeight": "800",
+                                                            "color": conf_color, "fontFamily": "'Syne',sans-serif"}),
+                        html.Span("/100", style={"color": "#444", "fontSize": "24px", "marginLeft": "4px"}),
+                        html.Span(" ⚠️" if confidence < 70 else " ✅", style={"fontSize": "20px", "marginLeft": "8px"})
+                    ]),
+                ]),
+                html.Div([
+                    html.Div(f"✅ Actively trading: {active_count} suppliers", style={"color": "#22c55e", "fontSize": "13px", "margin": "4px 0"}),
+                    html.Div(f"⚠️  Limited credit: {limited_count} suppliers", style={"color": "#eab308", "fontSize": "13px", "margin": "4px 0"}),
+                    html.Div(f"❌ Stopped trading: {stopped_count} suppliers", style={"color": "#ef4444", "fontSize": "13px", "margin": "4px 0"}),
+                ], style={"background": "#1a1a1a", "border": "1px solid #2a2a2a", "borderRadius": "8px", "padding": "12px 16px"})
+            ], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between", "gap": "40px", "flexWrap": "wrap"})
+        ], style={"background": "#161616", "border": f"1px solid {conf_color}30",
+                  "borderLeft": f"4px solid {conf_color}", "borderRadius": "10px", "padding": "20px", "marginBottom": "20px"})
+
+        total_outstanding = df["outstanding_usd"].sum()
+        total_overdue = df[df["overdue_days"] > 0]["outstanding_usd"].sum() if "overdue_days" in df.columns else 0
+        critical_suppliers = len(df[(df["supplier_status"] == "STOPPED") | (df["overdue_days"] > 30)]["supplier_name"].unique())
+
+        kpis = [
+            kpi_card("Total Outstanding", f"${total_outstanding:,.0f}", None, None, "fa-dollar-sign", "#00c853"),
+            kpi_card("Overdue Amount", f"${total_overdue:,.0f}", None, None, "fa-clock", "#f97316"),
+            kpi_card("At-Risk Suppliers", str(critical_suppliers), None, None, "fa-triangle-exclamation", "#ef4444"),
+            kpi_card("Active Suppliers", str(active_count), None, None, "fa-handshake", "#22c55e"),
+        ]
+
+        # Status chart - FIXED: Use separate layout update
+        sup_status = df.groupby(["supplier_name", "supplier_status"])["outstanding_usd"].sum().reset_index()
+        sup_status = sup_status.sort_values("outstanding_usd", ascending=False).head(14)
+        status_color_map = {"ACTIVE": "#22c55e", "LIMITED_CREDIT": "#f97316", "STOPPED": "#ef4444"}
         fig_status = go.Figure()
+        for status, color in status_color_map.items():
+            sub = sup_status[sup_status["supplier_status"] == status]
+            if not sub.empty:
+                fig_status.add_trace(go.Bar(x=sub["outstanding_usd"], y=sub["supplier_name"],
+                                             name=status.replace("_", " "), orientation="h", marker_color=color))
         
-        # Add bars for credit balance
-        fig_status.add_trace(go.Bar(
-            x=df["supplier_name"],
-            y=df["credit_balance"],
-            name="Credit Balance",
-            marker_color="#ff6b6b"
-        ))
-        
-        # Add bars for payment terms
-        fig_status.add_trace(go.Bar(
-            x=df["supplier_name"],
-            y=df["payment_terms_days"],
-            name="Payment Terms (days)",
-            marker_color="#4ecdc4",
-            yaxis="y2"
-        ))
-        
-        fig_status.update_layout(
-            title="Supplier Credit Status",
-            xaxis_title="Supplier",
-            yaxis_title="Credit Balance (USD)",
-            yaxis2=dict(
-                title="Payment Terms (days)",
-                overlaying="y",
-                side="right"
-            ),
-            **CHART_LAYOUT  # This no longer contains yaxis
-        )
-        
-        st.plotly_chart(fig_status, use_container_width=True)
+        # FIX: Create a copy and update separately
+        status_layout = CHART_LAYOUT.copy()
+        status_layout.update({
+            "barmode": "stack",
+            "title": {"text": "Outstanding by Supplier & Status", "font": {"color": "#ccc", "size": 13}},
+            "yaxis": {"categoryorder": "total ascending"}
+        })
+        fig_status.update_layout(**status_layout)
+
+        # Aging - Fixed layout merging
+        if "overdue_days" in df.columns:
+            bins = pd.cut(df["overdue_days"], bins=[-1, 0, 14, 30, 60, 999],
+                          labels=["Current", "1-14d", "15-30d", "31-60d", "60d+"])
+            age_amounts = df.groupby(bins)["outstanding_usd"].sum().reset_index()
+            age_amounts.columns = ["bucket", "amount"]
+            fig_aging = go.Figure(go.Bar(
+                x=age_amounts["bucket"].astype(str), y=age_amounts["amount"],
+                marker_color=["#22c55e", "#3b82f6", "#eab308", "#f97316", "#ef4444"]
+            ))
+            aging_layout = CHART_LAYOUT.copy()
+            aging_layout["title"] = {"text": "Accounts Payable Aging", "font": {"color": "#ccc", "size": 13}}
+            fig_aging.update_layout(**aging_layout)
+        else:
+            fig_aging = go.Figure()
+            fig_aging.update_layout(**CHART_LAYOUT, title={"text": "No aging data", "font": {"color": "#ccc"}})
+
+        # Outstanding top 10
+        top_out = df.groupby("supplier_name")["outstanding_usd"].sum().sort_values(ascending=False).head(10)
+        fig_out = go.Figure(go.Bar(x=top_out.values, y=top_out.index, orientation="h", marker_color="#00c853"))
+        out_layout = CHART_LAYOUT.copy()
+        out_layout.update({
+            "title": {"text": "Top 10 Outstanding Balances", "font": {"color": "#ccc", "size": 13}},
+            "yaxis": {"categoryorder": "total ascending"}
+        })
+        fig_out.update_layout(**out_layout)
+
+        # Priority table
+        unique_suppliers = df.drop_duplicates("supplier_name").head(15)
+        headers = ["Priority", "Supplier", "Status", "Outstanding", "Overdue Days", "Last Delivery", "Priority Score"]
+        header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 10px",
+                                                 "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
+                              for h in headers])
+        rows = []
+        for rank, (_, row) in enumerate(unique_suppliers.iterrows(), 1):
+            score = row["priority_score"]
+            score_color = "#ef4444" if score > 0.6 else "#f97316" if score > 0.4 else "#22c55e"
+            rows.append(html.Tr([
+                html.Td(f"#{rank}", style={"color": "#666", "padding": "8px 10px", "fontSize": "12px", "fontWeight": "600"}),
+                html.Td(row["supplier_name"], style={"color": "#fff", "padding": "8px 10px", "fontSize": "13px", "fontWeight": "500"}),
+                html.Td(status_badge(row["supplier_status"]), style={"padding": "8px 10px"}),
+                html.Td(f"${row['outstanding_usd']:,.0f}", style={"color": "#00c853", "padding": "8px 10px", "fontWeight": "600"}),
+                html.Td(f"{int(row['overdue_days'])}d",
+                        style={"color": "#ef4444" if row["overdue_days"] > 30 else "#eab308" if row["overdue_days"] > 0 else "#22c55e",
+                               "padding": "8px 10px"}),
+                html.Td(row.get("last_delivery_date", "N/A"), style={"color": "#888", "padding": "8px 10px", "fontSize": "11px"}),
+                html.Td([
+                    html.Div(f"{score:.2f}", style={"color": score_color, "fontWeight": "700", "fontSize": "13px"}),
+                    html.Div(style={"width": f"{score * 100:.0f}%", "height": "4px", "background": score_color,
+                                    "borderRadius": "2px", "marginTop": "3px", "maxWidth": "80px"})
+                ], style={"padding": "8px 10px"}),
+            ], style={"borderBottom": "1px solid #1a1a1a",
+                      "background": "#1a0a0a" if row["supplier_status"] == "STOPPED" else "transparent"}))
+
+        table = html.Table([html.Thead(header_row), html.Tbody(rows)],
+                           style={"width": "100%", "borderCollapse": "collapse"})
+
+        # Recommendations
+        recs = []
+        stopped = df[df["supplier_status"] == "STOPPED"].drop_duplicates("supplier_name")
+        for _, row in stopped.head(3).iterrows():
+            recs.append(html.Div([
+                html.Span("🔴 CRITICAL: ", style={"color": "#ef4444", "fontWeight": "700"}),
+                html.Span(f"Pay {row['supplier_name']} ${row['outstanding_usd']:,.0f} immediately. Overdue {int(row['overdue_days'])} days.",
+                          style={"color": "#ddd"}),
+            ], style={"padding": "10px 14px", "background": "#1a0808", "border": "1px solid #ef444430",
+                      "borderRadius": "8px", "marginBottom": "8px", "fontSize": "13px"}))
+
+        limited = df[df["supplier_status"] == "LIMITED_CREDIT"].drop_duplicates("supplier_name")
+        for _, row in limited.head(2).iterrows():
+            recs.append(html.Div([
+                html.Span("⚠️  WARNING: ", style={"color": "#f97316", "fontWeight": "700"}),
+                html.Span(f"{row['supplier_name']} on limited credit — ${row['outstanding_usd']:,.0f} outstanding. Pay within 7 days.",
+                          style={"color": "#ddd"}),
+            ], style={"padding": "10px 14px", "background": "#1a1000", "border": "1px solid #f9731630",
+                      "borderRadius": "8px", "marginBottom": "8px", "fontSize": "13px"}))
+
+        if recs:
+            recommendations_list = recs
+        else:
+            recommendations_list = [html.Div("No urgent recommendations", style={"color": "#888"})]
+
+        return html.Div([
+            page_header("Supplier Credit & Risk", "Accounts payable cross-referenced with stock urgency — who to pay first", "fa-file-invoice-dollar"),
+            html.Div([
+                confidence_block,
+                html.Div([html.Div(k, style={"flex": 1}) for k in kpis],
+                         style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
+                html.Div([
+                    html.Div([dcc.Graph(figure=fig_status, config={"displayModeBar": False}, style={"height": "280px"})],
+                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                    html.Div([dcc.Graph(figure=fig_aging, config={"displayModeBar": False}, style={"height": "280px"})],
+                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                    html.Div([dcc.Graph(figure=fig_out, config={"displayModeBar": False}, style={"height": "280px"})],
+                             style={"flex": 1, "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                ], style={"display": "flex", "gap": "14px", "marginBottom": "14px", "flexWrap": "wrap"}),
+                html.Div([
+                    html.Div([
+                        html.Span("💳 Smart Payment Priority Queue", style={"color": "#fff", "fontWeight": "600", "fontSize": "14px"}),
+                        html.Span(" — ranked by stock urgency × overdue risk", style={"color": "#666", "fontSize": "12px"})
+                    ], style={"marginBottom": "16px"}),
+                    table
+                ], style={"background": "#161616", "border": "1px solid #00c85320",
+                          "borderLeft": "3px solid #00c853", "borderRadius": "10px", "padding": "20px", "marginBottom": "14px", "overflowX": "auto"}),
+                html.Div([
+                    html.Div("💡 AI Recommendations", style={"color": "#888", "fontSize": "11px",
+                                                              "textTransform": "uppercase", "letterSpacing": "1px", "marginBottom": "14px"}),
+                    html.Div(recommendations_list)
+                ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
+            ], style={"padding": "20px 28px"})
+        ])
         
     except Exception as e:
-        st.error(f"Error creating supplier credit chart: {e}")
-    
-    # Credit risk table
-    df["risk_status"] = pd.cut(
-        df["credit_balance"],
-        bins=[-float('inf'), 5000, 20000, float('inf')],
-        labels=["Low Risk", "Medium Risk", "High Risk"]
-    )
-    
-    st.subheader("📋 Credit Risk Summary")
-    risk_summary = df.groupby("risk_status", as_index=False).agg({
-        "supplier_name": "count",
-        "credit_balance": "sum"
-    }).rename(columns={"supplier_name": "supplier_count", "credit_balance": "total_credit"})
-    
-    st.dataframe(risk_summary, use_container_width=True)
+        print(f"Error in supplier credit layout: {e}")
+        import traceback
+        traceback.print_exc()
+        return html.Div([
+            page_header("Supplier Credit & Risk", "Accounts payable cross-referenced with stock urgency — who to pay first", "fa-file-invoice-dollar"),
+            html.Div([
+                html.Div([
+                    html.Div("⚠️ Error Loading Data", style={
+                        "fontSize": "20px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "16px"
+                    }),
+                    html.Div(str(e), style={"color": "#888", "fontSize": "14px"}),
+                    html.Div("Please check that the database contains supplier credit data.",
+                            style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
+                ], style={"textAlign": "center", "padding": "60px"})
+            ], style={"padding": "20px 28px"})
+        ])
