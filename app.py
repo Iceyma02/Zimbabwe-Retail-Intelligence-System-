@@ -28,7 +28,36 @@ RETAILERS = [
     {"label": "🏬 SaiMart",           "value": "SAIMART", "color": "#1565c0"},
     {"label": "🛒 Choppies Zimbabwe",  "value": "CHOPPIES","color": "#f9a825"},
 ]
+# In app.py, update RETAILERS with logo paths
+RETAILERS = [
+    {"label": "📍 All Retailers", "value": "ALL", "color": "#00c853", "logo": None},
+    {"label": "🛒 TM Pick n Pay", "value": "PNP", "color": "#e31837", "logo": "/assets/logos/pnp.png"},
+    {"label": "🛍️  OK Zimbabwe", "value": "OK", "color": "#ff6d00", "logo": "/assets/logos/ok.png"},
+    {"label": "🏪 Spar Zimbabwe", "value": "SPAR", "color": "#007b40", "logo": "/assets/logos/spar.png"},
+    {"label": "🏬 SaiMart", "value": "SAIMART", "color": "#1565c0", "logo": "/assets/logos/saimart.png"},
+    {"label": "🛒 Choppies Zimbabwe", "value": "CHOPPIES", "color": "#f9a825", "logo": "/assets/logos/choppies.png"},
+]
 
+# Update the dropdown to use custom option rendering
+html.Div([
+    html.Div("Active Retailer", style={"color": "#555", "fontSize": "9px",
+                                        "textTransform": "uppercase", "letterSpacing": "1px",
+                                        "marginBottom": "6px"}),
+    dcc.Dropdown(
+        id="retailer-switcher",
+        options=[
+            {
+                "label": html.Div([
+                    html.Img(src=r["logo"], style={"height": "16px", "marginRight": "8px"}) if r["logo"] else None,
+                    html.Span(r["label"])
+                ], style={"display": "flex", "alignItems": "center"}) if r["logo"] else r["label"],
+                "value": r["value"]
+            } for r in RETAILERS
+        ],
+        value="ALL", clearable=False,
+        style={"fontSize": "12px"}
+    ),
+], style={"padding": "10px 10px 10px", "borderBottom": "1px solid #1e1e1e"}),
 NAV_ITEMS = [
     {"icon": "fa-gauge-high",          "label": "National Overview",    "href": "/"},
     {"icon": "fa-map-location-dot",    "label": "Map View",             "href": "/map"},
