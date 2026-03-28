@@ -1,4 +1,4 @@
-"""Inventory Monitor — Page 4"""
+"""Inventory Monitor — Page 4 - Enhanced with High Sales/Low Stock Alerts"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
@@ -57,6 +57,18 @@ def layout():
                            "borderRadius": "10px", "padding": "16px"}),
             ], style={"display": "flex", "gap": "14px", "marginBottom": "20px"}),
 
+            # High Sales / Low Stock Alert Section
+            html.Div([
+                html.Div([
+                    html.Div("⚠️ Reorder Priority Alerts", style={
+                        "color": "#f97316", "fontSize": "12px", "fontWeight": "600",
+                        "marginBottom": "12px", "display": "flex", "alignItems": "center", "gap": "8px"
+                    }),
+                    html.Div(id="priority-alerts", style={"maxHeight": "200px", "overflowY": "auto"})
+                ], style={"background": "#1a1500", "border": "1px solid #f9731630",
+                          "borderRadius": "10px", "padding": "16px", "marginBottom": "20px"})
+            ], id="priority-alerts-section"),
+
             # Inventory table
             html.Div([
                 html.Div("Stock Level Detail", style={"color": "#888", "fontSize": "11px",
@@ -75,6 +87,8 @@ def layout():
     Output("inv-category-chart", "figure"),
     Output("inv-expiry-chart", "figure"),
     Output("inv-table", "children"),
+    Output("priority-alerts", "children"),
+    Output("priority-alerts-section", "style"),
     Input("inv-store", "value"),
     Input("inv-category", "value"),
     Input("inv-status-filter", "value")
@@ -86,7 +100,20 @@ def update_inventory(store_id, category, status_filter):
         if df.empty:
             empty_fig = go.Figure()
             empty_fig.update_layout(**CHART_LAYOUT, title={"text": "No inventory data available"})
-            return [], empty_fig, empty_fig, empty_fig, html.Div("No inventory data available")
+            return [], empty_fig, empty_fig, empty_fig, html.Div("No inventory data available"), [], {"display": "none"}
+        
+        # Get sales data for the last 30 days to identify high-selling products
+        sales_df = get_sales(30)
+        
+        # Calculate average daily sales per product
+        high_sellers = {}
+        if not sales_df.empty:
+            # Flatten product_id if needed
+            if "product_id" in sales_df.columns:
+                sales_df["product_id"] = sales_df["product_id"].apply(str)
+            avg_sales = sales_df.groupby("product_id")["units_sold"].mean().reset_index()
+            avg_sales.columns = ["product_id", "avg_daily_sales"]
+            high_sellers = avg_sales.set_index("product_id")["avg_daily_sales"].to_dict()
         
         # Apply filters
         if store_id != "ALL":
@@ -108,6 +135,41 @@ def update_inventory(store_id, category, status_filter):
         
         expiring_3d = len(df[df["days_until_expiry"] <= 3]) if "days_until_expiry" in df.columns else 0
         inv_value = (df["current_stock"] * df["unit_cost"]).sum()
+        
+        # Identify reorder priority items (high sales + low stock)
+        df["avg_daily_sales"] = df["product_id"].map(high_sellers).fillna(0)
+        df["days_of_stock"] = df.apply(
+            lambda r: r["current_stock"] / max(r["avg_daily_sales"], 0.5) if r["avg_daily_sales"] > 0 else 999, 
+            axis=1
+        )
+        
+        # Items with high sales (>5 units/day) and low stock (<7 days)
+        priority_items = df[
+            (df["avg_daily_sales"] > 5) & 
+            (df["days_of_stock"] < 7) & 
+            (df["status"] != "GOOD")
+        ].sort_values("days_of_stock").head(10)
+        
+        # Create priority alerts
+        priority_alerts = []
+        for _, row in priority_items.iterrows():
+            days = row["days_of_stock"]
+            sales = row["avg_daily_sales"]
+            stock = row["current_stock"]
+            urgency_color = "#ef4444" if days < 3 else "#f97316"
+            priority_alerts.append(html.Div([
+                html.Span("🔥", style={"marginRight": "8px", "fontSize": "14px"}),
+                html.Div([
+                    html.Div(f"{row['product_name'][:35]} - {row['store_name']}", 
+                             style={"color": "#ddd", "fontSize": "13px", "fontWeight": "500"}),
+                    html.Div([
+                        html.Span(f"{stock} units left", style={"color": urgency_color, "fontWeight": "600"}),
+                        html.Span(f" • {sales:.0f} units/day avg", style={"color": "#888", "marginLeft": "8px"}),
+                        html.Span(f" • {days:.0f} days remaining", style={"color": urgency_color, "marginLeft": "8px"})
+                    ], style={"fontSize": "11px"})
+                ], style={"flex": 1})
+            ], style={"display": "flex", "alignItems": "center", "padding": "8px 0",
+                      "borderBottom": "1px solid #2a2a2a"}))
 
         kpis = [
             kpi_card("Total SKUs", f"{total_skus:,}", None, None, "fa-cubes", "#3b82f6"),
@@ -157,7 +219,7 @@ def update_inventory(store_id, category, status_filter):
         else:
             display_df = df.head(100)
             
-        headers = ["Product", "Category", "Store", "Stock", "Reorder Point", "Status", "Expiry"]
+        headers = ["Product", "Category", "Store", "Stock", "Daily Sales", "Days Left", "Status", "Expiry"]
         header_row = html.Tr([html.Th(h, style={"color": "#666", "fontSize": "11px", "padding": "8px 10px",
                                                  "borderBottom": "1px solid #2a2a2a", "textTransform": "uppercase"})
                               for h in headers])
@@ -166,13 +228,18 @@ def update_inventory(store_id, category, status_filter):
             stock_color = "#ef4444" if row["status"] == "CRITICAL" else "#f97316" if row["status"] == "LOW" else "#22c55e"
             expiry_display = f"{int(row['days_until_expiry'])}d" if "days_until_expiry" in row and pd.notna(row.get('days_until_expiry', 0)) else "N/A"
             expiry_color = "#ef4444" if "days_until_expiry" in row and row.get('days_until_expiry', 999) <= 3 else "#aaa"
+            daily_sales = row.get("avg_daily_sales", 0)
+            days_left = row.get("days_of_stock", 999)
             
             rows.append(html.Tr([
                 html.Td(row["product_name"][:30], style={"color": "#ddd", "padding": "6px 10px", "fontSize": "12px"}),
                 html.Td(row["category"], style={"color": "#888", "padding": "6px 10px", "fontSize": "11px"}),
                 html.Td(row["store_name"], style={"color": "#888", "padding": "6px 10px", "fontSize": "11px"}),
                 html.Td(str(row["current_stock"]), style={"color": stock_color, "padding": "6px 10px", "fontWeight": "600"}),
-                html.Td(str(row["reorder_point"]), style={"color": "#666", "padding": "6px 10px"}),
+                html.Td(f"{daily_sales:.0f}/d" if daily_sales > 0 else "—", 
+                        style={"color": "#3b82f6" if daily_sales > 5 else "#888", "padding": "6px 10px"}),
+                html.Td(f"{days_left:.0f}d" if days_left < 999 else "—",
+                        style={"color": stock_color, "padding": "6px 10px", "fontWeight": "600"}),
                 html.Td(status_badge(row["status"]), style={"padding": "6px 10px"}),
                 html.Td(expiry_display,
                         style={"color": expiry_color, "padding": "6px 10px", "fontSize": "12px"}),
@@ -181,7 +248,11 @@ def update_inventory(store_id, category, status_filter):
         table = html.Table([html.Thead(header_row), html.Tbody(rows)],
                            style={"width": "100%", "borderCollapse": "collapse"})
 
-        return [html.Div(k, style={"flex": 1}) for k in kpis], fig_status, fig_cat, fig_expiry, table
+        # Show/hide priority alerts section
+        show_alerts = len(priority_alerts) > 0
+        alerts_style = {"display": "block"} if show_alerts else {"display": "none"}
+
+        return [html.Div(k, style={"flex": 1}) for k in kpis], fig_status, fig_cat, fig_expiry, table, priority_alerts, alerts_style
         
     except Exception as e:
         print(f"Error in inventory callback: {e}")
@@ -189,4 +260,4 @@ def update_inventory(store_id, category, status_filter):
         traceback.print_exc()
         empty_fig = go.Figure()
         empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
-        return [], empty_fig, empty_fig, empty_fig, html.Div(f"Error loading inventory: {e}")
+        return [], empty_fig, empty_fig, empty_fig, html.Div(f"Error loading inventory: {e}"), [], {"display": "none"}
