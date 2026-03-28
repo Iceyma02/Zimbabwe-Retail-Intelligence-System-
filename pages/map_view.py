@@ -1,3 +1,4 @@
+"""Map View — Page 2 with Retailer Filter"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
@@ -48,10 +49,24 @@ def layout():
 @callback(
     Output("zimbabwe-map", "figure"),
     Output("map-store-cards", "children"),
-    Input("map-color-by", "value")
+    Input("map-color-by", "value"),
+    Input("active-retailer", "data")  # Added retailer filter
 )
-def update_map(color_by):
+def update_map(color_by, retailer):
     df = get_store_revenue_summary(30)
+    
+    # Filter by retailer
+    if retailer != "ALL":
+        df = df[df["retailer_id"] == retailer]
+    
+    if df.empty:
+        empty_fig = go.Figure()
+        empty_fig.update_layout(
+            mapbox={"style": "carto-darkmatter", "center": {"lat": -19.0, "lon": 29.8}, "zoom": 5.5},
+            paper_bgcolor="rgba(0,0,0,0)",
+            annotations=[dict(text=f"No stores found for {retailer}", x=0.5, y=0.5, showarrow=False, font=dict(color="#888"))]
+        )
+        return empty_fig, html.Div(f"No stores available for {retailer}", style={"color": "#888", "padding": "20px"})
 
     color_col = {"revenue": "total_revenue", "profit": "total_profit", "margin": "margin_pct"}[color_by]
     color_label = {"revenue": "Revenue ($)", "profit": "Profit ($)", "margin": "Margin (%)"}[color_by]
@@ -59,10 +74,11 @@ def update_map(color_by):
     # Tier labels
     df = df.sort_values(color_col, ascending=False).reset_index(drop=True)
     df["tier"] = df.index.map(lambda i: "🥇 Top" if i < 3 else ("🟡 Mid" if i < 6 else "🔴 Low"))
-    df["size"] = df[color_col] / df[color_col].max() * 40 + 15
+    df["size"] = df[color_col] / df[color_col].max() * 40 + 15 if df[color_col].max() > 0 else 20
 
     hover_text = df.apply(lambda r: (
         f"<b>{r['store_name']}</b><br>"
+        f"Retailer: {r.get('retailer_id', 'N/A')}<br>"
         f"City: {r['city']}<br>"
         f"Revenue: ${r['total_revenue']:,.0f}<br>"
         f"Profit: ${r['total_profit']:,.0f}<br>"
@@ -107,9 +123,10 @@ def update_map(color_by):
     cards = []
     for _, row in df.iterrows():
         tier_color = {"🥇 Top": "#22c55e", "🟡 Mid": "#eab308", "🔴 Low": "#ef4444"}[row["tier"]]
+        retailer_icon = {"PNP": "🛒", "OK": "🛍️", "SPAR": "🏪", "SAIMART": "🏬", "CHOPPIES": "🛒"}.get(row.get("retailer_id", ""), "📍")
         cards.append(html.Div([
             html.Div([
-                html.Span(row["tier"].split()[0], style={"fontSize": "14px"}),
+                html.Span(f"{retailer_icon} {row['tier'].split()[0]}", style={"fontSize": "14px"}),
                 html.Div([
                     html.Div(row["store_name"], style={"color": "#ddd", "fontSize": "12px", "fontWeight": "500"}),
                     html.Div(row["city"], style={"color": "#666", "fontSize": "11px"})
@@ -120,9 +137,10 @@ def update_map(color_by):
                   "background": "#161616", "cursor": "pointer"}))
 
     cards_container = html.Div([
-        html.Div("Store Rankings", style={"color": "#888", "fontSize": "11px",
-                                           "textTransform": "uppercase", "letterSpacing": "1px",
-                                           "padding": "12px", "borderBottom": "1px solid #222"}),
+        html.Div(f"Store Rankings — {retailer if retailer != 'ALL' else 'All Retailers'}", 
+                 style={"color": "#888", "fontSize": "11px",
+                        "textTransform": "uppercase", "letterSpacing": "1px",
+                        "padding": "12px", "borderBottom": "1px solid #222"}),
         *cards
     ], style={"background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "overflow": "hidden"})
 
