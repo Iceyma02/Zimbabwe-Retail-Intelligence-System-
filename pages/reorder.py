@@ -207,8 +207,8 @@ def layout():
             rows.append(html.Tr([
                 html.Td(row["product_name"][:28], style={"color": "#ddd", "padding": "7px 10px", "fontSize": "12px"}),
                 html.Td(str(row["store_name"])[:20], style={"color": "#888", "padding": "7px 10px", "fontSize": "11px"}),
-                html.Td(str(row["current_stock"]), style={"color": urgency_color", "padding": "7px 10px", "fontWeight": "600"}),
-                html.Td(f"{days:.0f}d", style={"color": urgency_color", "padding": "7px 10px", "fontWeight": "600"}),
+                html.Td(str(row["current_stock"]), style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
+                html.Td(f"{days:.0f}d", style={"color": urgency_color, "padding": "7px 10px", "fontWeight": "600"}),
                 html.Td(str(int(row["reorder_qty"])), style={"color": "#3b82f6", "padding": "7px 10px"}),
                 html.Td(f"${order_val:,.0f}", style={"color": "#22c55e", "padding": "7px 10px"}),
                 html.Td(html.Div(style={
