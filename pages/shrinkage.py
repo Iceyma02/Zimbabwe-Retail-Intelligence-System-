@@ -13,14 +13,14 @@ from components.shared import *
 dash.register_page(__name__, path="/shrinkage", name="Shrinkage & Loss", order=14)
 
 def flatten_value(val):
-    """Flatten any nested value to a simple string/number"""
+    """Flatten any nested value to a simple string"""
     if val is None:
         return "Unknown"
     if isinstance(val, (list, tuple, np.ndarray)):
         if len(val) > 0:
             return str(val[0])
         return "Unknown"
-    if hasattr(val, 'iloc'):  # Handle pandas Series
+    if hasattr(val, 'iloc'):
         try:
             return str(val.iloc[0])
         except:
@@ -42,37 +42,23 @@ def layout():
                 ], style={"padding": "20px 28px"})
             ])
         
-        # Make a copy and flatten all columns
+        # Make a copy
         df_shrink = df.copy()
         
-        # Flatten store_name - convert to simple string
-        if "store_name" in df_shrink.columns:
-            df_shrink["store_name"] = df_shrink["store_name"].apply(flatten_value)
-        else:
-            df_shrink["store_name"] = "Unknown"
+        # Flatten all columns to simple strings
+        for col in df_shrink.columns:
+            if col != "value_usd":
+                df_shrink[col] = df_shrink[col].apply(flatten_value)
         
-        # Flatten month
-        if "month" in df_shrink.columns:
-            df_shrink["month"] = df_shrink["month"].apply(flatten_value)
-        else:
-            df_shrink["month"] = "Unknown"
-        
-        # Flatten cause
-        if "cause" in df_shrink.columns:
-            df_shrink["cause"] = df_shrink["cause"].apply(flatten_value)
-        else:
-            df_shrink["cause"] = "Unknown"
-        
-        # Convert value_usd to numeric
+        # Ensure value_usd is numeric
         df_shrink["value_usd"] = pd.to_numeric(df_shrink["value_usd"], errors='coerce').fillna(0)
         
-        # Create a new DataFrame with flattened data
-        df_clean = pd.DataFrame({
-            "store_name": df_shrink["store_name"],
-            "month": df_shrink["month"],
-            "cause": df_shrink["cause"],
-            "value_usd": df_shrink["value_usd"]
-        })
+        # Create a clean DataFrame with flattened data
+        df_clean = pd.DataFrame()
+        df_clean["store_name"] = df_shrink["store_name"] if "store_name" in df_shrink.columns else "Unknown"
+        df_clean["month"] = df_shrink["month"] if "month" in df_shrink.columns else "Unknown"
+        df_clean["cause"] = df_shrink["cause"] if "cause" in df_shrink.columns else "Unknown"
+        df_clean["value_usd"] = df_shrink["value_usd"]
         
         # Calculate totals
         total_loss = df_clean["value_usd"].sum()
@@ -81,7 +67,7 @@ def layout():
         monthly_totals = df_clean.groupby("month")["value_usd"].sum()
         avg_monthly = monthly_totals.mean() if not monthly_totals.empty else 0
         
-        # Group by store_name - use a new DataFrame to avoid index issues
+        # Group by store_name
         store_loss = df_clean.groupby("store_name")["value_usd"].sum()
         if not store_loss.empty:
             worst_store = store_loss.idxmax()
