@@ -1,4 +1,4 @@
-"""National Overview - Page 1"""
+"""National Overview - Page 1 - Enhanced with Modern Styling"""
 import dash
 from dash import html, dcc, callback, Input, Output
 import plotly.graph_objects as go
@@ -31,33 +31,42 @@ def layout():
     return html.Div([
         page_header("National Overview", "Real-time performance across all Zimbabwe stores", "fa-gauge-high"),
         html.Div([
+            # KPI Cards Row
             html.Div(id="overview-kpis", style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
+            
+            # Charts Row
             html.Div([
                 html.Div([
-                    dcc.Graph(id="overview-trend", config={"displayModeBar": False}, style={"height": "260px"})
-                ], style={"flex": "2", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
+                    dcc.Graph(id="overview-trend", config={"displayModeBar": False, "responsive": True}, style={"height": "320px"})
+                ], style={"flex": "2", "background": "rgba(22, 22, 22, 0.6)", "backdropFilter": "blur(10px)",
+                          "border": "1px solid rgba(255,255,255,0.05)", "borderRadius": "16px", "padding": "20px"}),
                 html.Div([
-                    dcc.Graph(id="overview-category", config={"displayModeBar": False}, style={"height": "260px"})
-                ], style={"flex": "1", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "16px"}),
-            ], style={"display": "flex", "gap": "14px", "marginBottom": "20px", "flexWrap": "wrap"}),
+                    dcc.Graph(id="overview-category", config={"displayModeBar": False, "responsive": True}, style={"height": "320px"})
+                ], style={"flex": "1", "background": "rgba(22, 22, 22, 0.6)", "backdropFilter": "blur(10px)",
+                          "border": "1px solid rgba(255,255,255,0.05)", "borderRadius": "16px", "padding": "20px"}),
+            ], style={"display": "flex", "gap": "20px", "marginBottom": "20px", "flexWrap": "wrap"}),
+            
+            # Store Ranking & Alerts Row
             html.Div([
                 html.Div([
                     html.Div(id="store-ranking-header", style={
                         "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
-                        "letterSpacing": "1px", "marginBottom": "14px"
+                        "letterSpacing": "1px", "marginBottom": "14px", "fontWeight": "600"
                     }),
-                    html.Div(id="store-ranking-list")
-                ], style={"flex": "1", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
+                    html.Div(id="store-ranking-list", style={"maxHeight": "400px", "overflowY": "auto"})
+                ], style={"flex": "1", "background": "rgba(22, 22, 22, 0.6)", "backdropFilter": "blur(10px)",
+                          "border": "1px solid rgba(255,255,255,0.05)", "borderRadius": "16px", "padding": "20px"}),
                 html.Div([
                     html.Div("🚨 Active Alerts", style={
                         "color": "#888", "fontSize": "11px", "textTransform": "uppercase",
-                        "letterSpacing": "1px", "marginBottom": "14px"
+                        "letterSpacing": "1px", "marginBottom": "14px", "fontWeight": "600"
                     }),
-                    html.Div(id="active-alerts")
-                ], style={"flex": "1", "background": "#161616", "border": "1px solid #222", "borderRadius": "10px", "padding": "20px"}),
-            ], style={"display": "flex", "gap": "14px"}),
+                    html.Div(id="active-alerts", style={"maxHeight": "400px", "overflowY": "auto"})
+                ], style={"flex": "1", "background": "rgba(22, 22, 22, 0.6)", "backdropFilter": "blur(10px)",
+                          "border": "1px solid rgba(255,255,255,0.05)", "borderRadius": "16px", "padding": "20px"}),
+            ], style={"display": "flex", "gap": "20px", "flexWrap": "wrap"}),
         ], style={"padding": "20px 28px"}),
-        dcc.Interval(id="overview-refresh", interval=300000, n_intervals=0)
+        dcc.Interval(id="overview-refresh", interval=300000, n_intervals=0)  # 5 minute refresh
     ])
 
 
@@ -74,6 +83,8 @@ def layout():
 def update_overview(retailer, _):
     """Update all overview components when retailer changes or interval triggers"""
     try:
+        retailer_name = RETAILER_NAMES.get(retailer, "All Retailers")
+        
         # Get KPIs
         kpis = get_national_kpis(30, retailer)
         if kpis.empty:
@@ -98,101 +109,270 @@ def update_overview(retailer, _):
         critical_count = len(inv[inv["status"] == "CRITICAL"]) if not inv.empty else 0
         low_count = len(inv[inv["status"] == "LOW"]) if not inv.empty else 0
         
+        # Create KPI Cards with enhanced styling
         kpi_cards = [
-            html.Div(kpi_card("30-Day Revenue", f"${revenue:,.0f}", rev_delta, "vs prev 30d", "fa-dollar-sign", "#00c853"), style={"flex": 1}),
-            html.Div(kpi_card("30-Day Profit", f"${profit:,.0f}", None, None, "fa-chart-line", "#22c55e"), style={"flex": 1}),
-            html.Div(kpi_card("Profit Margin", f"{margin:.1f}%", None, None, "fa-percent", "#3b82f6"), style={"flex": 1}),
-            html.Div(kpi_card("Units Sold", f"{units:,.0f}", None, None, "fa-box", "#8b5cf6"), style={"flex": 1}),
-            html.Div(kpi_card("Critical Stock", str(critical_count), None, None, "fa-triangle-exclamation", "#ef4444"), style={"flex": 1}),
-            html.Div(kpi_card("Low Stock Items", str(low_count), None, None, "fa-exclamation", "#f97316"), style={"flex": 1}),
+            html.Div(kpi_card("30-Day Revenue", f"${revenue:,.0f}", rev_delta, "vs prev 30d", "fa-dollar-sign", "#00c853"), 
+                    style={"flex": 1, "minWidth": "150px"}),
+            html.Div(kpi_card("30-Day Profit", f"${profit:,.0f}", None, None, "fa-chart-line", "#22c55e"), 
+                    style={"flex": 1, "minWidth": "150px"}),
+            html.Div(kpi_card("Profit Margin", f"{margin:.1f}%", None, None, "fa-percent", "#3b82f6"), 
+                    style={"flex": 1, "minWidth": "150px"}),
+            html.Div(kpi_card("Units Sold", f"{units:,}", None, None, "fa-box", "#8b5cf6"), 
+                    style={"flex": 1, "minWidth": "150px"}),
+            html.Div(kpi_card("Critical Stock", str(critical_count), None, None, "fa-triangle-exclamation", "#ef4444"), 
+                    style={"flex": 1, "minWidth": "150px"}),
+            html.Div(kpi_card("Low Stock Items", str(low_count), None, None, "fa-exclamation", "#f97316"), 
+                    style={"flex": 1, "minWidth": "150px"}),
         ]
         
-        # Trend chart
+        # Enhanced Trend Chart
         trend_df = get_daily_trend(60, retailer)
         fig_trend = go.Figure()
-        if not trend_df.empty:
-            fig_trend.add_trace(go.Scatter(
-                x=trend_df["date"], y=trend_df["revenue"], name="Revenue",
-                line={"color": "#00c853", "width": 2},
-                fill="tozeroy", fillcolor="rgba(0,200,83,0.08)"
-            ))
-            fig_trend.add_trace(go.Scatter(
-                x=trend_df["date"], y=trend_df["profit"], name="Profit",
-                line={"color": "#22c55e", "width": 2}
-            ))
-        fig_trend.update_layout(**CHART_LAYOUT, title={"text": "60-Day Revenue & Profit Trend", "font": {"color": "#ccc", "size": 13}})
         
-        # Category chart
+        if not trend_df.empty:
+            # Add Revenue line with gradient fill
+            fig_trend.add_trace(go.Scatter(
+                x=trend_df["date"], 
+                y=trend_df["revenue"], 
+                name="Revenue",
+                line={"color": "#00c853", "width": 3},
+                fill="tozeroy",
+                fillcolor="rgba(0,200,83,0.15)",
+                hovertemplate="<b>%{x}</b><br>Revenue: $%{y:,.0f}<extra></extra>"
+            ))
+            
+            # Add Profit line
+            fig_trend.add_trace(go.Scatter(
+                x=trend_df["date"], 
+                y=trend_df["profit"], 
+                name="Profit",
+                line={"color": "#22c55e", "width": 2, "dash": "dot"},
+                hovertemplate="<b>%{x}</b><br>Profit: $%{y:,.0f}<extra></extra>"
+            ))
+        
+        # Modern layout for trend chart
+        fig_trend.update_layout(
+            **CHART_LAYOUT,
+            title={
+                "text": f"60-Day Revenue & Profit Trend - {retailer_name}",
+                "font": {"color": "#fff", "size": 14, "family": "Syne"},
+                "x": 0.05,
+                "xanchor": "left"
+            },
+            hovermode="x unified",
+            plot_bgcolor="#0d0d0d",
+            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis={
+                "showgrid": True,
+                "gridcolor": "#1e1e1e",
+                "gridwidth": 0.5,
+                "showline": True,
+                "linecolor": "#2a2a2a",
+                "title": None
+            },
+            yaxis={
+                "showgrid": True,
+                "gridcolor": "#1e1e1e",
+                "gridwidth": 0.5,
+                "showline": True,
+                "linecolor": "#2a2a2a",
+                "title": {"text": "Amount ($)", "font": {"color": "#888", "size": 11}}
+            },
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "right",
+                "x": 1,
+                "bgcolor": "rgba(0,0,0,0)",
+                "font": {"color": "#aaa"}
+            },
+            margin={"t": 60, "b": 40, "l": 50, "r": 30}
+        )
+        
+        # Enhanced Category Chart
         cat_df = get_category_sales(30, retailer)
         if not cat_df.empty:
-            fig_cat = px.bar(cat_df, x="revenue", y="category", orientation="h",
-                             color="revenue", color_continuous_scale=["#2d0a0a", "#00c853"])
+            # Sort by revenue for better visualization
+            cat_df = cat_df.sort_values("revenue", ascending=True)
+            
+            fig_cat = go.Figure()
+            fig_cat.add_trace(go.Bar(
+                x=cat_df["revenue"],
+                y=cat_df["category"],
+                orientation="h",
+                marker=dict(
+                    color=cat_df["revenue"],
+                    colorscale=[
+                        [0, "#2d0a0a"],
+                        [0.5, "#f97316"],
+                        [1, "#00c853"]
+                    ],
+                    showscale=True,
+                    colorbar={
+                        "title": "Revenue ($)",
+                        "titlefont": {"color": "#888"},
+                        "tickfont": {"color": "#888"},
+                        "x": 1.02
+                    }
+                ),
+                text=cat_df["revenue"].apply(lambda x: f"${x:,.0f}"),
+                textposition="outside",
+                textfont={"size": 10, "color": "#aaa"},
+                hovertemplate="<b>%{y}</b><br>Revenue: $%{x:,.0f}<extra></extra>"
+            ))
+            
+            fig_cat.update_layout(
+                **CHART_LAYOUT,
+                title={
+                    "text": f"Revenue by Category - {retailer_name}",
+                    "font": {"color": "#fff", "size": 14, "family": "Syne"},
+                    "x": 0.05,
+                    "xanchor": "left"
+                },
+                xaxis={
+                    "title": {"text": "Revenue ($)", "font": {"color": "#888", "size": 11}},
+                    "tickprefix": "$",
+                    "showgrid": True,
+                    "gridcolor": "#1e1e1e"
+                },
+                yaxis={
+                    "title": None,
+                    "showgrid": False,
+                    "categoryorder": "total ascending"
+                },
+                height=350,
+                margin={"t": 60, "b": 20, "l": 120, "r": 60}
+            )
         else:
             fig_cat = go.Figure()
-        fig_cat.update_layout(**CHART_LAYOUT, title={"text": "Revenue by Category", "font": {"color": "#ccc", "size": 13}},
-                              showlegend=False, coloraxis_showscale=False)
-        fig_cat.update_traces(marker_line_width=0)
+            fig_cat.update_layout(
+                **CHART_LAYOUT,
+                title={
+                    "text": f"No category data available - {retailer_name}",
+                    "font": {"color": "#888", "size": 14}
+                }
+            )
         
-        # Store ranking
+        # Store ranking with enhanced styling
         store_df = get_store_revenue_summary(30, retailer)
         ranking_items = []
+        
         if not store_df.empty:
+            # Calculate total for percentage
+            total_revenue = store_df["total_revenue"].sum()
+            
             for i, (_, row) in enumerate(store_df.iterrows()):
                 rank = i + 1
                 medal = ["🥇", "🥈", "🥉"][rank - 1] if rank <= 3 else f"#{rank}"
                 pct = row["margin_pct"] if pd.notna(row["margin_pct"]) else 0
+                revenue_share = (row["total_revenue"] / total_revenue * 100) if total_revenue > 0 else 0
+                
                 ranking_items.append(html.Div([
-                    html.Span(medal, style={"fontSize": "16px", "width": "28px"}),
                     html.Div([
-                        html.Div(row["store_name"], style={"color": "#ddd", "fontSize": "13px", "fontWeight": "500"}),
-                        html.Div(row["city"], style={"color": "#666", "fontSize": "11px"})
-                    ], style={"flex": 1}),
-                    html.Div([
-                        html.Div(f"${row['total_revenue']:,.0f}", style={"color": "#fff", "fontSize": "13px", "fontWeight": "600", "textAlign": "right"}),
-                        html.Div(f"{pct:.1f}% margin", style={"color": "#22c55e" if pct > 15 else "#f97316", "fontSize": "11px", "textAlign": "right"})
-                    ])
-                ], style={"display": "flex", "alignItems": "center", "gap": "10px",
-                          "padding": "8px 0", "borderBottom": "1px solid #1e1e1e"}))
+                        html.Span(medal, style={"fontSize": "20px", "width": "36px", "textAlign": "center"}),
+                        html.Div([
+                            html.Div(row["store_name"], style={"color": "#ddd", "fontSize": "13px", "fontWeight": "500"}),
+                            html.Div(row["city"], style={"color": "#666", "fontSize": "11px"})
+                        ], style={"flex": 1, "marginLeft": "12px"}),
+                        html.Div([
+                            html.Div(f"${row['total_revenue']:,.0f}", 
+                                    style={"color": "#fff", "fontSize": "14px", "fontWeight": "600", "textAlign": "right"}),
+                            html.Div([
+                                html.Span(f"{pct:.1f}% margin", 
+                                         style={"color": "#22c55e" if pct > 15 else "#f97316", "fontSize": "10px"}),
+                                html.Span(f" • {revenue_share:.1f}% share", 
+                                         style={"color": "#666", "fontSize": "10px", "marginLeft": "8px"})
+                            ], style={"textAlign": "right"})
+                        ])
+                    ], style={"display": "flex", "alignItems": "center", "gap": "8px"}),
+                    html.Div(style={
+                        "width": f"{revenue_share}%",
+                        "height": "2px",
+                        "background": "linear-gradient(90deg, #00c853, #00ff66)",
+                        "borderRadius": "2px",
+                        "marginTop": "8px",
+                        "transition": "width 0.3s ease"
+                    })
+                ], style={"padding": "12px 0", "borderBottom": "1px solid #1e1e1e"}))
         
-        retailer_name = RETAILER_NAMES.get(retailer, "All Retailers")
-        ranking_header = f"Store Revenue Ranking — Last 30 Days ({retailer_name})"
+        ranking_header = f"📊 Store Revenue Ranking — Last 30 Days ({retailer_name})"
         
-        # Alerts
+        # Enhanced Alerts with icons and styling
         alerts = []
+        
         if not inv.empty:
             critical = inv[inv["status"] == "CRITICAL"].head(6)
             for _, row in critical.iterrows():
+                days = row.get("days_until_expiry", 999)
                 alerts.append(html.Div([
-                    html.Span("🔴", style={"marginRight": "8px"}),
                     html.Div([
-                        html.Div(f"{row['product_name'][:28]}", style={"color": "#ddd", "fontSize": "12px"}),
-                        html.Div(f"{row['store_name']} — {row['current_stock']} units left",
-                                 style={"color": "#666", "fontSize": "11px"})
-                    ])
-                ], style={"display": "flex", "alignItems": "center", "padding": "6px 0",
-                          "borderBottom": "1px solid #1e1e1e"}))
+                        html.Span("🔴", style={"fontSize": "18px", "marginRight": "12px"}),
+                        html.Div([
+                            html.Div(f"{row['product_name'][:35]}", 
+                                    style={"color": "#fff", "fontSize": "13px", "fontWeight": "500"}),
+                            html.Div([
+                                html.Span(f"{row['store_name']}", style={"color": "#888", "fontSize": "11px"}),
+                                html.Span(f" • {row['current_stock']} units left", 
+                                         style={"color": "#ef4444", "fontSize": "11px", "marginLeft": "8px"})
+                            ])
+                        ], style={"flex": 1})
+                    ], style={"display": "flex", "alignItems": "flex-start"})
+                ], style={"padding": "12px", "borderLeft": "3px solid #ef4444", 
+                          "background": "rgba(239,68,68,0.05)", "borderRadius": "8px", "marginBottom": "8px"}))
         
         credit = get_supplier_credit()
         if not credit.empty:
             stopped = credit[credit["supplier_status"] == "STOPPED"]
             for _, row in stopped.head(3).iterrows():
                 alerts.append(html.Div([
-                    html.Span("⛔", style={"marginRight": "8px"}),
                     html.Div([
-                        html.Div(f"{row['supplier_name']} — STOPPED", style={"color": "#ef4444", "fontSize": "12px"}),
-                        html.Div(f"${row['outstanding_usd']:,.0f} outstanding",
-                                 style={"color": "#666", "fontSize": "11px"})
-                    ])
-                ], style={"display": "flex", "alignItems": "center", "padding": "6px 0",
-                          "borderBottom": "1px solid #1e1e1e"}))
+                        html.Span("⛔", style={"fontSize": "18px", "marginRight": "12px"}),
+                        html.Div([
+                            html.Div(f"{row['supplier_name']} — STOPPED", 
+                                    style={"color": "#ef4444", "fontSize": "13px", "fontWeight": "500"}),
+                            html.Div(f"${row['outstanding_usd']:,.0f} outstanding", 
+                                    style={"color": "#888", "fontSize": "11px"})
+                        ], style={"flex": 1})
+                    ], style={"display": "flex", "alignItems": "center"})
+                ], style={"padding": "12px", "borderLeft": "3px solid #ef4444", 
+                          "background": "rgba(239,68,68,0.05)", "borderRadius": "8px", "marginBottom": "8px"}))
         
         if not alerts:
-            alerts = [html.Div("✅ No critical alerts", style={"color": "#22c55e"})]
+            alerts = [html.Div([
+                html.Div("✅ No critical alerts", style={"color": "#22c55e", "fontSize": "14px"}),
+                html.Div("All systems operating normally", style={"color": "#666", "fontSize": "12px", "marginTop": "4px"})
+            ], style={"textAlign": "center", "padding": "40px"})]
         
         return kpi_cards, fig_trend, fig_cat, ranking_items, ranking_header, alerts
         
     except Exception as e:
         print(f"Error in overview: {e}")
+        import traceback
+        traceback.print_exc()
+        
         empty_fig = go.Figure()
-        empty_fig.update_layout(**CHART_LAYOUT, title={"text": f"Error: {str(e)[:50]}"})
-        return [], empty_fig, empty_fig, [], "Store Ranking", [html.Div(f"Error: {e}")]
+        empty_fig.update_layout(
+            **CHART_LAYOUT,
+            title={"text": f"⚠️ Error Loading Data", "font": {"color": "#ef4444", "size": 14}},
+            annotations=[{
+                "text": str(e)[:100],
+                "showarrow": False,
+                "xref": "paper",
+                "yref": "paper",
+                "x": 0.5,
+                "y": 0.5,
+                "font": {"color": "#888", "size": 12}
+            }]
+        )
+        
+        error_message = html.Div([
+            html.Div("⚠️ Error Loading Data", style={
+                "fontSize": "18px", "fontWeight": "700", "color": "#ef4444", "marginBottom": "12px"
+            }),
+            html.Div(str(e)[:150], style={"color": "#888", "fontSize": "13px"}),
+            html.Div("Please check that the database contains the required data.", 
+                    style={"color": "#666", "fontSize": "12px", "marginTop": "12px"})
+        ], style={"textAlign": "center", "padding": "40px"})
+        
+        return [], empty_fig, empty_fig, [], f"Store Revenue Ranking — Last 30 Days ({retailer_name})", error_message
